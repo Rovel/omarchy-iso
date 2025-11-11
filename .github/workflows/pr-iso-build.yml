@@ -1,0 +1,26 @@
+name: PR ISO Build
+
+on:
+  workflow_dispatch:
+  pull_request:
+
+jobs:
+  build-iso:
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux/archlinux:latest
+      options: --privileged
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+    - name: Build ISO in Arch Linux container
+      run: |
+        pacman -Syu --noconfirm
+        chmod +x builder/build-iso.sh
+        ./builder/build-iso.sh
+    - name: Upload ISO artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: omarchy-iso-${{ github.run_number }}
+        path: out/*.iso
+        retention-days: 30
