@@ -13,6 +13,9 @@ jobs:
     container:
       image: archlinux/archlinux:latest
       options: --privileged
+      volumes:
+        - ${{ github.workspace }}:/workspace
+      workdir: /workspace
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
