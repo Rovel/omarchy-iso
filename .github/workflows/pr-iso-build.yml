@@ -14,7 +14,7 @@ jobs:
       image: archlinux/archlinux:latest
       options: --privileged
       volumes:
-        - ${{ github.workspace }}:/
+        - ${{ github.workspace }}:/workspace
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
@@ -25,10 +25,10 @@ jobs:
     - name: Build ISO in Arch Linux container
       run: |
         pacman -Syu --noconfirm && \
-        chmod +x build_iso.sh && \
+        chmod +x /workspace/build_iso.sh && \
         OMARCHY_INSTALLER_REPO="${OMARCHY_INSTALLER_REPO}" \
         OMARCHY_INSTALLER_REF="${OMARCHY_INSTALLER_REF}" \
-        ./build_iso.sh
+        /workspace/build_iso.sh
     
     - name: Upload ISO artifact
       uses: actions/upload-artifact@v4
