@@ -25,11 +25,13 @@ jobs:
     - name: Build ISO in Arch Linux container
       run: |
         pacman -Syu --noconfirm && \
+        echo "Installing git..." && \
         pacman -S --noconfirm git && \
-        chmod +x /workspace/bin/omarchy-iso-make && \
+        echo "Running build-iso.sh script..." && \
+        chmod +x /workspace/builder/build-iso.sh && \
         OMARCHY_INSTALLER_REPO="${OMARCHY_INSTALLER_REPO}" \
         OMARCHY_INSTALLER_REF="${OMARCHY_INSTALLER_REF}" \
-        /workspace/bin/omarchy-iso-make
+        /workspace/builder/build-iso.sh
     
     - name: Upload ISO artifact
       uses: actions/upload-artifact@v4
