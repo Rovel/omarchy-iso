@@ -19,12 +19,25 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+      
     - name: Build ISO in Arch Linux container
-      working-directory: ${{ github.workspace }}
       run: |
-        pacman -Syu --noconfirm
-        pacman -S --noconfirm git
-        OMARCHY_INSTALLER_REPO="${OMARCHY_INSTALLER_REPO}" OMARCHY_INSTALLER_REF="${OMARCHY_INSTALLER_REF}" ./bin/omarchy-iso-make
+        docker run --rm \
+          --privileged \
+          -v "${{ github.workspace }}:/workspace" \
+          -w /workspace \
+          archlinux:latest \
+          bash -c "
+            pacman -Syu --noconfirm && \
+            chmod +x build_iso.sh && \
+            OMARCHY_INSTALLER_REPO="${OMARCHY_INSTALLER_REPO}" \
+            OMARCHY_INSTALLER_REF="${OMARCHY_INSTALLER_REF}" \
+            ./build_iso.sh
+          "
+    
     - name: Upload ISO artifact
       uses: actions/upload-artifact@v4
       with:
