@@ -31,6 +31,7 @@ jobs:
         chmod +x /workspace/builder/build-iso.sh && \
         OMARCHY_INSTALLER_REPO="${OMARCHY_INSTALLER_REPO}" \
         OMARCHY_INSTALLER_REF="${OMARCHY_INSTALLER_REF}" \
+        CI_ENV=true \
         /workspace/builder/build-iso.sh
     
     - name: Upload ISO artifact
