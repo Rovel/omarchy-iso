@@ -17,6 +17,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
     - name: Build ISO in Arch Linux container
+      working-directory: ${{ github.workspace }}
       run: |
         pacman -Syu --noconfirm
         pacman -S --noconfirm git
