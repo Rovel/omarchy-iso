@@ -7,10 +7,12 @@ pacman-key --init
 pacman --noconfirm -Sy archlinux-keyring
 pacman --noconfirm -Sy archiso git sudo base-devel jq grub
 
-# Install omarchy-keyring for package verification during build
-# The [omarchy] repo is defined in /configs/pacman-online.conf with SigLevel = Optional TrustAll
-pacman --config /configs/pacman-online.conf --noconfirm -Sy omarchy-keyring
-pacman-key --populate omarchy
+if [ -z "$CI_ENV" ]; then
+    # Install omarchy-keyring for package verification during build
+    # The [omarchy] repo is defined in /configs/pacman-online.conf with SigLevel = Optional TrustAll
+    pacman --config /configs/pacman-online.conf --noconfirm -Sy omarchy-keyring
+    pacman-key --populate omarchy
+fi
 
 # Setup build locations
 build_cache_dir="/var/cache"
