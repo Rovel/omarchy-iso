@@ -26,6 +26,29 @@ OMARCHY_INSTALLER_REPO="myuser/omarchy-fork" OMARCHY_INSTALLER_REF="some-feature
 
 Run `./bin/omarchy-iso-boot [release/omarchy.iso]`.
 
+## OMA-ID P0 stand-in layer (disposable)
+
+This branch can embed the OMA-ID P0 stand-in — the `pam_oma_id` PAM module,
+the fake agent, and a smoke matrix — into the built ISO. It is **off by
+default**: ordinary ISO builds are unchanged. Opt in by setting `OMA_ID_SHA`
+to a pinned oma-id commit (oma-id is not on crates.io, so it is built from
+a git checkout at that SHA):
+
+```bash
+OMA_ID_SHA=<oma-id-commit> ./bin/omarchy-iso-make --no-boot-offer
+```
+
+The layer installs `pam_oma_id.so` into the standard module search path and
+the harness binaries under `/opt/oma-id/`, with a `PROVENANCE` file recording
+the pinned repo, SHA, and artifact hashes. **No PAM service on the ISO is
+modified** — this is a P0 protocol stand-in; no login or offline gate is
+claimed. Inside the booted live environment, `bash /opt/oma-id/run-smoke.sh`
+runs the 5-scenario matrix (valid / wrong / expired / down / unmapped).
+
+CI: pushes to this branch run the layer build plus the installed-path smoke
+in a disposable Arch container (`packaging-smoke`); a full ISO build with the
+layer embedded is available via manual dispatch (`iso-build`).
+
 ## Signing the ISO
 
 Run `./bin/omarchy-iso-sign [release/omarchy.iso]`. The signing key is retrieved from the shared Omarchy vault with the 1Password CLI.

@@ -97,6 +97,13 @@ ln -s "$offline_mirror_dir" "/var/cache/omarchy/mirror/offline"
 # same config when booted. 
 cp $build_cache_dir/pacman-offline.conf "$build_cache_dir/airootfs/etc/pacman.conf"
 
+# --- Optional disposable OMA-ID P0 stand-in layer (no-op unless OMA_ID_SHA is set) ---
+# Installs pam_oma_id.so + the fake agent + smoke assets into the airootfs.
+# No PAM service on the ISO is modified; see builder/oma-id-layer.sh.
+if [[ -n "${OMA_ID_SHA:-}" ]]; then
+  AIROOTFS="$build_cache_dir/airootfs" /builder/oma-id-layer.sh
+fi
+
 # Finally, we assemble the entire ISO
 mkarchiso -v -w "$build_cache_dir/work/" -o "/out/" "$build_cache_dir/"
 

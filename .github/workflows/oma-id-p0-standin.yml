@@ -1,0 +1,63 @@
+name: oma-id p0 stand-in
+
+on:
+  push:
+    branches: [oma-id-p0-standin]
+  workflow_dispatch:
+
+env:
+  # oma-id is not on crates.io → git pin. Bump deliberately, together with
+  # the smoke matrix it ships (tests/iso-smoke in the oma-id repo).
+  OMA_ID_SHA: 235fe091ee337e294d11cedb810370907eb602a2
+
+jobs:
+  packaging-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      # Runs the exact layer script build-iso.sh calls, with AIROOTFS=/ so the
+      # artifacts land at their real ISO paths inside the disposable container,
+      # then executes the installed-path 5-scenario smoke matrix (real libpam).
+      - name: Layer build + installed-path scenario smoke (disposable Arch container)
+        run: |
+          set -euo pipefail
+          docker rm -f oma-layer-smoke >/dev/null 2>&1 || true
+          docker run --name oma-layer-smoke \
+            -v "$PWD/builder:/builder:ro" \
+            -e OMA_ID_SHA="$OMA_ID_SHA" \
+            archlinux:latest \
+            bash -c "pacman -Syu --noconfirm && AIROOTFS=/ /builder/oma-id-layer.sh && bash /opt/oma-id/run-smoke.sh"
+      - name: Save provenance
+        if: always()
+        run: |
+          docker cp oma-layer-smoke:/opt/oma-id/PROVENANCE ./OMA_ID_PROVENANCE 2>/dev/null || true
+          docker rm -f oma-layer-smoke >/dev/null 2>&1 || true
+          cat ./OMA_ID_PROVENANCE 2>/dev/null || echo "no provenance captured"
+      - name: Upload provenance
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: oma-id-layer-provenance
+          path: OMA_ID_PROVENANCE
+          if-no-files-found: ignore
+
+  # Heavy: full ISO build with the layer embedded. Manual only — per the
+  # recorded cross-fork strategy, per-push CI stays fast in oma-id.
+  iso-build:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - name: Build the ISO with the OMA-ID layer
+        run: OMA_ID_SHA="$OMA_ID_SHA" ./bin/omarchy-iso-make --no-boot-offer
+      - name: Upload ISO
+        uses: actions/upload-artifact@v7
+        with:
+          name: omarchy-iso-oma-id-p0
+          path: release/*.iso
+          retention-days: 14
+          if-no-files-found: error
