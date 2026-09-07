@@ -91,6 +91,14 @@ Ukrainian|ua'
   fi
 }
 
+# STEP 0: OWNERSHIP — only when the oma-id-p0-standin layer is present
+# (ADR-006: opt-in, gated; personal builds are byte-identical without it).
+# Personal use continues the normal flow untouched; School / work validates
+# an OMA-ID server connection. See /opt/oma-id/bin/installer-choice.
+if [[ -x /opt/oma-id/bin/installer-choice ]]; then
+  /opt/oma-id/bin/installer-choice || abort "oma-id installer choice failed"
+fi
+
 keyboard_form
 
 # STEP 2: USER

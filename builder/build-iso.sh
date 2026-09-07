@@ -122,6 +122,7 @@ if [[ -n "${OMA_ID_SHA:-}" ]]; then
 file_permissions+=(
   ["/opt/oma-id/bin/fake_agent"]="0:0:755"
   ["/opt/oma-id/bin/pam-test-client"]="0:0:755"
+  ["/opt/oma-id/bin/installer-choice"]="0:0:755"
   ["/opt/oma-id/run-smoke.sh"]="0:0:755"
 )
 PERMS

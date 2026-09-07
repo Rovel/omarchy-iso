@@ -42,6 +42,9 @@ install -D -m 0755 "$module" "$AIROOTFS/usr/lib/security/pam_oma_id.so"
 install -D -m 0755 "$agent" "$AIROOTFS/opt/oma-id/bin/fake_agent"
 install -D -m 0755 "$client" "$AIROOTFS/opt/oma-id/bin/pam-test-client"
 install -D -m 0755 "$src/tests/iso-smoke/run-smoke.sh" "$AIROOTFS/opt/oma-id/run-smoke.sh"
+# Installer work/school selector (plan §6.1/§6.2): invoked by the configurator
+# when the layer is present; personal installs never see it.
+install -D -m 0755 "$src/tests/iso-smoke/installer-choice.sh" "$AIROOTFS/opt/oma-id/bin/installer-choice"
 
 {
   echo "repo:     $OMA_ID_REPO"

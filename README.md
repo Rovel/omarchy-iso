@@ -45,6 +45,17 @@ modified** — this is a P0 protocol stand-in; no login or offline gate is
 claimed. Inside the booted live environment, `bash /opt/oma-id/run-smoke.sh`
 runs the 5-scenario matrix (valid / wrong / expired / down / unmapped).
 
+When the layer is present, the installer configurator also shows the
+ownership choice (plan §6.1): **Personal use** (default, no server
+contact, standard install untouched) or **School / work** — which asks
+for the OMA-ID server URL, validates it against the public
+`/.well-known/oma-enrollment` metadata, and displays the organization
+confirmation (requested origin next to the canonical issuer). This P0 slice
+performs connection validation only: there is no enrollment protocol yet,
+so a work/school choice ends in an explicit user decision to continue as
+personal or abort — never a silent fallback. Plain builds without the
+layer show no new question (ADR-006: opt-in, gated).
+
 CI: pushes to this branch run the layer build plus the installed-path smoke
 in a disposable Arch container (`packaging-smoke`); a full ISO build with
 the layer embedded is available via manual dispatch (`iso-build`), which
