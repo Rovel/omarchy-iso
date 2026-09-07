@@ -29,7 +29,7 @@ jobs:
             -v "$PWD/builder:/builder:ro" \
             -e OMA_ID_SHA="$OMA_ID_SHA" \
             archlinux:latest \
-            bash -c "pacman-key --init && pacman -Syu --noconfirm && pacman --noconfirm -Sy zsh python && AIROOTFS=/ /builder/oma-id-layer.sh && bash /builder/oma-id-ci-tests.sh"
+            bash -c "pacman-key --init && pacman -Syu --noconfirm && pacman --noconfirm -Sy zsh python jq curl && AIROOTFS=/ /builder/oma-id-layer.sh && bash /builder/oma-id-ci-tests.sh"
       - name: Save provenance
         if: always()
         run: |
