@@ -67,6 +67,7 @@ DOCKER_ARGS=(
   -e "OMARCHY_MIRROR=$OMARCHY_MIRROR"
   -e "OMA_ID_SHA=${OMA_ID_SHA:-}"
   -e "OMA_ID_REPO=${OMA_ID_REPO:-}"
+  -e "OMA_ID_SMOKE=${OMA_ID_SMOKE:-}"
   -e "HOST_UID=$(id -u)"
   -e "HOST_GID=$(id -g)"
   -v "$BUILD_RELEASE_PATH/:/out/"

@@ -42,12 +42,19 @@ jobs:
           path: OMA_ID_PROVENANCE
           if-no-files-found: ignore
 
-  # Heavy: full ISO build with the layer embedded. Manual only — per the
-  # recorded cross-fork strategy, per-push CI stays fast in oma-id.
+  # Heavy: full ISO build with the layer embedded, plus a real-libpam smoke
+  # on the assembled airootfs (chroot inside the build container) before
+  # mkarchiso packs it. Manual only — per the recorded cross-fork strategy,
+  # per-push CI stays fast in oma-id. Do NOT download the ~8G artifact for
+  # local verification (WSL vhdx growth exhausts the host disk); the
+  # pre-pack smoke is the same content. For a booted-live-environment run,
+  # burn the ISO to USB and run `bash /opt/oma-id/run-smoke.sh` manually.
   iso-build:
     if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    env:
+      OMA_ID_SMOKE: "1"
     steps:
       - uses: actions/checkout@v7
         with:

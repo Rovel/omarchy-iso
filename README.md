@@ -46,8 +46,16 @@ claimed. Inside the booted live environment, `bash /opt/oma-id/run-smoke.sh`
 runs the 5-scenario matrix (valid / wrong / expired / down / unmapped).
 
 CI: pushes to this branch run the layer build plus the installed-path smoke
-in a disposable Arch container (`packaging-smoke`); a full ISO build with the
-layer embedded is available via manual dispatch (`iso-build`).
+in a disposable Arch container (`packaging-smoke`); a full ISO build with
+the layer embedded is available via manual dispatch (`iso-build`), which
+also runs the smoke against the assembled airootfs (chroot, before
+`mkarchiso` packs it). Set `OMA_ID_SMOKE=1` locally for the same behavior.
+
+> **Do not download the ~8 GB ISO artifact for local verification on
+> WSL/Windows.** The WSL vhdx grows dynamically and can exhaust the host
+> disk. The CI pre-pack smoke verifies the same content; for a
+> booted-live-environment run, burn the ISO to USB and run
+> `bash /opt/oma-id/run-smoke.sh` in the live session.
 
 ## Signing the ISO
 

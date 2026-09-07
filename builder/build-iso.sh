@@ -104,6 +104,34 @@ if [[ -n "${OMA_ID_SHA:-}" ]]; then
   AIROOTFS="$build_cache_dir/airootfs" /builder/oma-id-layer.sh
 fi
 
+# --- Optional OMA-ID smoke on the assembled airootfs (OMA_ID_SMOKE=1) ---
+# Runs the 5-scenario real-libpam smoke against the exact airootfs mkarchiso
+# is about to pack, via chroot. For CI use — keeps heavy verification off
+# local disks. All PAM activity stays inside the chroot.
+if [[ -n "${OMA_ID_SHA:-}" && -n "${OMA_ID_SMOKE:-}" ]]; then
+  smoke_root="$build_cache_dir/airootfs"
+  echo "--- OMA-ID pre-pack verification (files as packed by mkarchiso) ---"
+  ls -la "$smoke_root/usr/lib/security/pam_oma_id.so"
+  ls -la "$smoke_root/opt/oma-id/"
+  cat "$smoke_root/opt/oma-id/PROVENANCE"
+  mkdir -p "$smoke_root/proc" "$smoke_root/sys" "$smoke_root/dev"
+  mount --bind /dev "$smoke_root/dev"
+  mount --bind /proc "$smoke_root/proc"
+  mount --bind /sys "$smoke_root/sys"
+  smoke_status=0
+  chroot "$smoke_root" /bin/bash /opt/oma-id/run-smoke.sh || smoke_status=$?
+  umount "$smoke_root/sys" "$smoke_root/proc" "$smoke_root/dev" || true
+  # Keep the packed ISO clean of smoke residue (service files are already
+  # removed by the smoke script's own exit trap).
+  rm -f "$smoke_root/tmp/oma-id-smoke-results.tsv"
+  rm -rf "$smoke_root/run/oma-id"
+  if [[ $smoke_status -ne 0 ]]; then
+    echo "oma-id smoke FAILED on the assembled airootfs" >&2
+    exit 1
+  fi
+  echo "oma-id smoke passed on the assembled airootfs"
+fi
+
 # Finally, we assemble the entire ISO
 mkarchiso -v -w "$build_cache_dir/work/" -o "/out/" "$build_cache_dir/"
 
