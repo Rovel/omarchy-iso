@@ -118,8 +118,20 @@ if [[ -n "${OMA_ID_SHA:-}" && -n "${OMA_ID_SMOKE:-}" ]]; then
   mount --bind /dev "$smoke_root/dev"
   mount --bind /proc "$smoke_root/proc"
   mount --bind /sys "$smoke_root/sys"
+  # The Omarchy live airootfs ships zsh, not bash — pick what exists.
+  smoke_shell=""
+  for candidate in /bin/bash /usr/bin/zsh /bin/zsh; do
+    if [[ -x "$smoke_root$candidate" ]]; then smoke_shell="$candidate"; break; fi
+  done
+  if [[ -z "$smoke_shell" ]]; then
+    echo "oma-id smoke: no known shell (bash/zsh) in the airootfs; /bin contains:" >&2
+    ls -la "$smoke_root/bin/" >&2 || true
+    umount "$smoke_root/sys" "$smoke_root/proc" "$smoke_root/dev" || true
+    exit 1
+  fi
+  echo "oma-id smoke: chroot shell = $smoke_shell"
   smoke_status=0
-  chroot "$smoke_root" /bin/bash /opt/oma-id/run-smoke.sh || smoke_status=$?
+  chroot "$smoke_root" "$smoke_shell" /opt/oma-id/run-smoke.sh || smoke_status=$?
   umount "$smoke_root/sys" "$smoke_root/proc" "$smoke_root/dev" || true
   # Keep the packed ISO clean of smoke residue (service files are already
   # removed by the smoke script's own exit trap).

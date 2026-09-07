@@ -6,9 +6,9 @@ on:
   workflow_dispatch:
 
 env:
-  # oma-id is not on crates.io → git pin. Bump deliberately, together with
+  # Pinned oma-id commit (not on crates.io → git pin). Bump deliberately, together with
   # the smoke matrix it ships (tests/iso-smoke in the oma-id repo).
-  OMA_ID_SHA: 235fe091ee337e294d11cedb810370907eb602a2
+  OMA_ID_SHA: ff8290ef66c459e6f712e45661c3f7a81b715ee1
 
 jobs:
   packaging-smoke:
@@ -18,7 +18,9 @@ jobs:
       - uses: actions/checkout@v7
       # Runs the exact layer script build-iso.sh calls, with AIROOTFS=/ so the
       # artifacts land at their real ISO paths inside the disposable container,
-      # then executes the installed-path 5-scenario smoke matrix (real libpam).
+      # then executes the installed-path 5-scenario smoke matrix (real libpam)
+      # under BOTH shells: bash (build containers) and zsh (the Omarchy live
+      # airootfs ships zsh, not bash — the ISO job chroots with zsh).
       - name: Layer build + installed-path scenario smoke (disposable Arch container)
         run: |
           set -euo pipefail
@@ -27,7 +29,7 @@ jobs:
             -v "$PWD/builder:/builder:ro" \
             -e OMA_ID_SHA="$OMA_ID_SHA" \
             archlinux:latest \
-            bash -c "pacman -Syu --noconfirm && AIROOTFS=/ /builder/oma-id-layer.sh && bash /opt/oma-id/run-smoke.sh"
+            bash -c "pacman -Syu --noconfirm && pacman --noconfirm -Sy zsh && AIROOTFS=/ /builder/oma-id-layer.sh && bash /opt/oma-id/run-smoke.sh && echo '=== zsh run ===' && zsh /opt/oma-id/run-smoke.sh"
       - name: Save provenance
         if: always()
         run: |
