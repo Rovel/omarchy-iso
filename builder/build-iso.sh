@@ -115,6 +115,16 @@ fi
 # use — keeps heavy verification off local disks; all PAM activity stays
 # inside the build chroot.
 if [[ -n "${OMA_ID_SHA:-}" ]]; then
+  # mkarchiso strips modes when copying custom airootfs files (cp
+  # --no-preserve=mode) and only restores those declared in the profile's
+  # file_permissions map — extend it for the layer's executables.
+  cat >>"$build_cache_dir/profiledef.sh" <<'PERMS'
+file_permissions+=(
+  ["/opt/oma-id/bin/fake_agent"]="0:0:755"
+  ["/opt/oma-id/bin/pam-test-client"]="0:0:755"
+  ["/opt/oma-id/run-smoke.sh"]="0:0:755"
+)
+PERMS
   echo "--- OMA-ID layer verification (files overlaid into the live root) ---"
   ls -la "$build_cache_dir/airootfs/usr/lib/security/pam_oma_id.so"
   ls -la "$build_cache_dir/airootfs/opt/oma-id/"
