@@ -91,14 +91,30 @@ all_packages+=($(grep -v '^#' /builder/archinstall.packages | grep -v '^$'))
 mkdir -p /tmp/offlinedb
 pacman --config /configs/pacman-online-${OMARCHY_MIRROR}.conf --noconfirm -Sy --dbpath /tmp/offlinedb >/dev/null 2>&1 || true
 available_packages=()
+dropped_packages=""
 for pkg in "${all_packages[@]}"; do
   if pacman --config /configs/pacman-online-${OMARCHY_MIRROR}.conf --dbpath /tmp/offlinedb -Si "$pkg" >/dev/null 2>&1; then
     available_packages+=("$pkg")
   else
     echo "WARNING: package not in the ${OMARCHY_MIRROR} mirror, dropping: $pkg"
+    dropped_packages+=" $pkg "
   fi
 done
 all_packages=("${available_packages[@]}")
+
+# mkarchiso installs from packages.x86_64 against the offline mirror — the
+# same drift must be filtered there, or the airootfs pacstrap fails with
+# "target not found".
+filtered_x86=()
+for pkg in $(cat "$build_cache_dir/packages.x86_64"); do
+  if [[ "$dropped_packages" != *" $pkg "* ]]; then
+    filtered_x86+=("$pkg")
+  else
+    echo "WARNING: dropping $pkg from the mkarchiso install list (not in the mirror)"
+  fi
+done
+printf '%s\n' "${filtered_x86[@]}" > "$build_cache_dir/packages.x86_64"
+
 pacman --config /configs/pacman-online-${OMARCHY_MIRROR}.conf --noconfirm -Syw "${all_packages[@]}" --cachedir $offline_mirror_dir/ --dbpath /tmp/offlinedb
 repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "$offline_mirror_dir/"*.pkg.tar.zst
 
