@@ -68,7 +68,9 @@ jobs:
         with:
           submodules: recursive
       - name: Build the ISO with the OMA-ID layer
-        run: OMA_ID_SHA="$OMA_ID_SHA" ./bin/omarchy-iso-make --no-boot-offer
+        # The SAME entry point as local builds (bin/oma-id-build-standin):
+        # pin + smoke + flags live there once, for both paths.
+        run: ./bin/oma-id-build-standin
       - name: Upload ISO
         uses: actions/upload-artifact@v7
         with:

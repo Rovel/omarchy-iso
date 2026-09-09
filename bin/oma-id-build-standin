@@ -1,0 +1,55 @@
+#!/bin/bash
+# Build the oma-id standin ISO — the ONE entry point used by BOTH CI and
+# local builds (the workflow's iso-build job calls this script verbatim).
+#
+# Parity rules:
+# - The oma-id pin lives in .github/workflows/oma-id-p0-standin.yml (single
+#   source of truth). This script extracts it and, when OMA_ID_SHA is also
+#   present in the environment (CI), asserts the two match so they can
+#   never drift silently.
+# - The in-build smoke (OMA_ID_SMOKE=1) runs identically in both places.
+#
+# Output: release/<image>.iso in this repository. The heavy intermediate
+# state (offline package mirror) is cached under $HOME/.cache/omarchy/ so
+# repeat builds are incremental.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+repo_root="$PWD"
+
+workflow=.github/workflows/oma-id-p0-standin.yml
+pin=$(grep -oE 'OMA_ID_SHA: [0-9a-f]{40}' "$workflow" | grep -oE '[0-9a-f]{40}')
+if [[ -z "$pin" ]]; then
+  echo "oma-id-build-standin: no OMA_ID_SHA pin found in $workflow" >&2
+  exit 1
+fi
+
+# CI sets OMA_ID_SHA via the workflow env; a mismatch means someone bumped
+# one place and not the other — fail loudly instead of building a
+# different image than CI.
+if [[ -n "${OMA_ID_SHA:-}" && "${OMA_ID_SHA}" != "$pin" ]]; then
+  echo "oma-id-build-standin: pin drift!" >&2
+  echo "  workflow file: $pin" >&2
+  echo "  environment:   $OMA_ID_SHA" >&2
+  exit 1
+fi
+
+echo "== oma-id standin ISO build (same entry point as CI) =="
+echo "   pin: $pin"
+echo "   smoke: on (in-build, on the installed live root)"
+
+git submodule update --init --recursive --jobs=8 >/dev/null
+
+OMA_ID_SHA="$pin" OMA_ID_SMOKE=1 ./bin/omarchy-iso-make --no-boot-offer
+
+iso=$(ls -t release/*.iso | head -n1)
+echo
+echo "== built =="
+sha256sum "$iso"
+echo "   $iso"
+if [[ -n "${OMA_ID_ISO_OUT:-}" ]]; then
+  mkdir -p "$OMA_ID_ISO_OUT"
+  mv "$iso" "$OMA_ID_ISO_OUT/"
+  echo "   moved to $OMA_ID_ISO_OUT/ (set OMA_ID_ISO_OUT to relocate, e.g. another disk)"
+  rmdir release 2>/dev/null || true
+fi
