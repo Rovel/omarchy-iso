@@ -4,14 +4,18 @@
 #
 # Parity rules:
 # - The oma-id pin lives in .github/workflows/oma-id-p0-standin.yml (single
-#   source of truth). This script extracts it and, when OMA_ID_SHA is also
-#   present in the environment (CI), asserts the two match so they can
-#   never drift silently.
+#   source of truth); this script extracts it and, when OMA_ID_SHA is also
+#   present in the environment (CI), asserts the two match.
 # - The in-build smoke (OMA_ID_SMOKE=1) runs identically in both places.
+# - Sources enter the build container via `docker cp`, not bind mounts:
+#   the same flow works on CI runners and on Docker-Desktop/WSL hosts whose
+#   file-share bridge mangles bind mounts (files arrive as directories).
+# - The builder container is REUSED across builds, so the offline package
+#   mirror inside it persists — repeat builds are incremental. Set
+#   OMA_ISO_BUILDER_FRESH=1 to start a clean one.
 #
-# Output: release/<image>.iso in this repository. The heavy intermediate
-# state (offline package mirror) is cached under $HOME/.cache/omarchy/ so
-# repeat builds are incremental.
+# Output: release/<image>.iso in this repository. Set OMA_ID_ISO_OUT to
+# relocate the result (e.g. a non-system disk).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -23,10 +27,6 @@ if [[ -z "$pin" ]]; then
   echo "oma-id-build-standin: no OMA_ID_SHA pin found in $workflow" >&2
   exit 1
 fi
-
-# CI sets OMA_ID_SHA via the workflow env; a mismatch means someone bumped
-# one place and not the other — fail loudly instead of building a
-# different image than CI.
 if [[ -n "${OMA_ID_SHA:-}" && "${OMA_ID_SHA}" != "$pin" ]]; then
   echo "oma-id-build-standin: pin drift!" >&2
   echo "  workflow file: $pin" >&2
@@ -35,14 +35,52 @@ if [[ -n "${OMA_ID_SHA:-}" && "${OMA_ID_SHA}" != "$pin" ]]; then
 fi
 
 echo "== oma-id standin ISO build (same entry point as CI) =="
-echo "   pin: $pin"
-echo "   smoke: on (in-build, on the installed live root)"
+echo "   pin: $pin   smoke: on   builder container: ${OMA_ISO_BUILDER_NAME:-oma-iso-builder}"
 
 git submodule update --init --recursive --jobs=8 >/dev/null
 
-OMA_ID_SHA="$pin" OMA_ID_SMOKE=1 ./bin/omarchy-iso-make --no-boot-offer
+builder="${OMA_ISO_BUILDER_NAME:-oma-iso-builder}"
+if [[ -n "${OMA_ISO_BUILDER_FRESH:-}" ]]; then
+  docker rm -f "$builder" >/dev/null 2>&1 || true
+fi
+if ! docker inspect "$builder" >/dev/null 2>&1; then
+  docker run -d --name "$builder" --privileged archlinux/archlinux:latest sleep infinity >/dev/null
+  # First-boot keyring init keeps the first build from tripping on fresh
+  # image pulls (a known Arch image quirk).
+  docker exec "$builder" pacman-key --init >/dev/null 2>&1 || true
+fi
 
-iso=$(ls -t release/*.iso | head -n1)
+# Sources in (overwrite on every build — the container is only a cache for
+# /var/cache package state, never for sources).
+docker exec "$builder" mkdir -p /builder /configs /archiso /out
+docker cp "$repo_root/builder/." "$builder:/builder/"
+docker cp "$repo_root/configs/."  "$builder:/configs/"
+docker cp "$repo_root/archiso/." "$builder:/archiso/"
+
+# Build. The env mirrors what omarchy-iso-make passes for the standin
+# build: stable mirror, upstream installer refs, smoke on, agent layer on.
+docker exec \
+  -e OMARCHY_MIRROR="${OMARCHY_MIRROR:-stable}" \
+  -e OMARCHY_INSTALLER_REPO="${OMARCHY_INSTALLER_REPO:-basecamp/omarchy}" \
+  -e OMARCHY_INSTALLER_REF="${OMARCHY_INSTALLER_REF:-master}" \
+  -e OMA_ID_SHA="$pin" \
+  -e OMA_ID_SMOKE=1 \
+  -e OMA_ID_SERVER_URL="${OMA_ID_SERVER_URL:-}" \
+  -e OMA_ID_DEVICE_ID="${OMA_ID_DEVICE_ID:-workstation-1}" \
+  -e HOST_UID="$(id -u)" \
+  -e HOST_GID="$(id -g)" \
+  "$builder" bash /builder/build-iso.sh
+
+# Result out.
+rm -rf /tmp/oma-iso-out && mkdir -p /tmp/oma-iso-out
+docker exec "$builder" bash -c 'rm -rf /tmp/oma-iso-out && mkdir /tmp/oma-iso-out && cp /out/*.iso /tmp/oma-iso-out/' || true
+docker cp "$builder:/tmp/oma-iso-out/." /tmp/oma-iso-out/
+mkdir -p release
+iso_name=$(ls /tmp/oma-iso-out/*.iso | head -n1)
+mv "$iso_name" release/
+iso="release/$(basename "$iso_name")"
+chown "$(id -u):$(id -g)" "$iso" 2>/dev/null || true
+
 echo
 echo "== built =="
 sha256sum "$iso"
@@ -50,6 +88,6 @@ echo "   $iso"
 if [[ -n "${OMA_ID_ISO_OUT:-}" ]]; then
   mkdir -p "$OMA_ID_ISO_OUT"
   mv "$iso" "$OMA_ID_ISO_OUT/"
-  echo "   moved to $OMA_ID_ISO_OUT/ (set OMA_ID_ISO_OUT to relocate, e.g. another disk)"
+  echo "   moved to $OMA_ID_ISO_OUT/"
   rmdir release 2>/dev/null || true
 fi
