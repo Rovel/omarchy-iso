@@ -43,8 +43,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Clear out old packages
-sudo rm -rf /var/cache/pacman/pkg/*
+# Clear out old packages (only when a host pacman cache exists — Arch hosts;
+# harmless no-op elsewhere: the container does all the real work)
+if [ -d /var/cache/pacman/pkg ]; then
+  sudo rm -rf /var/cache/pacman/pkg/*
+fi
 
 # Ensure we have the submodule checked out
 git submodule update --init --recursive --jobs=8
