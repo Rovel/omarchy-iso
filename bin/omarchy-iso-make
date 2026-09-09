@@ -68,6 +68,8 @@ DOCKER_ARGS=(
   -e "OMA_ID_SHA=${OMA_ID_SHA:-}"
   -e "OMA_ID_REPO=${OMA_ID_REPO:-}"
   -e "OMA_ID_SMOKE=${OMA_ID_SMOKE:-}"
+  -e "OMA_ID_SERVER_URL=${OMA_ID_SERVER_URL:-}"
+  -e "OMA_ID_DEVICE_ID=${OMA_ID_DEVICE_ID:-}"
   -e "HOST_UID=$(id -u)"
   -e "HOST_GID=$(id -g)"
   -v "$BUILD_RELEASE_PATH/:/out/"

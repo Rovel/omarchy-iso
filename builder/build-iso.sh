@@ -97,11 +97,14 @@ ln -s "$offline_mirror_dir" "/var/cache/omarchy/mirror/offline"
 # same config when booted. 
 cp $build_cache_dir/pacman-offline.conf "$build_cache_dir/airootfs/etc/pacman.conf"
 
-# --- Optional disposable OMA-ID P0 stand-in layer (no-op unless OMA_ID_SHA is set) ---
-# Installs pam_oma_id.so + the fake agent + smoke assets into the airootfs.
-# No PAM service on the ISO is modified; see builder/oma-id-layer.sh.
+# --- Optional disposable OMA-ID layer (no-op unless OMA_ID_SHA is set) ---
+# Installs pam_oma_id.so + the real agent + systemd unit + §8.2 PAM service
+# wiring into the airootfs; see builder/oma-id-layer.sh for the boundaries.
 if [[ -n "${OMA_ID_SHA:-}" ]]; then
-  AIROOTFS="$build_cache_dir/airootfs" /builder/oma-id-layer.sh
+  AIROOTFS="$build_cache_dir/airootfs" \
+    OMA_ID_SERVER_URL="${OMA_ID_SERVER_URL:-}" \
+    OMA_ID_DEVICE_ID="${OMA_ID_DEVICE_ID:-}" \
+    /builder/oma-id-layer.sh
 fi
 
 # --- Optional OMA-ID smoke on the installed live root (OMA_ID_SMOKE=1) ---
@@ -124,6 +127,12 @@ file_permissions+=(
   ["/opt/oma-id/bin/pam-test-client"]="0:0:755"
   ["/opt/oma-id/bin/installer-choice"]="0:0:755"
   ["/opt/oma-id/run-smoke.sh"]="0:0:755"
+  ["/usr/bin/oma-id-agent"]="0:0:755"
+  ["/usr/lib/systemd/system/oma-id-agent.service"]="0:0:644"
+  ["/etc/oma-id-agent.json"]="0:0:644"
+  ["/etc/pam.d/sddm"]="0:0:644"
+  ["/etc/pam.d/omarchy-lock-password"]="0:0:644"
+  ["/etc/pam.d/omarchy-lock-fingerprint"]="0:0:644"
 )
 PERMS
   echo "--- OMA-ID layer verification (files overlaid into the live root) ---"

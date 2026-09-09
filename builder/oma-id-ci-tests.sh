@@ -42,6 +42,9 @@ wait_for_stub() {
 wait_for_stub http://127.0.0.1:8931/.well-known/oma-enrollment
 wait_for_stub http://127.0.0.1:8932/.well-known/oma-enrollment
 
+echo '=== installer-choice: check-network (container has a route) ==='
+/opt/oma-id/bin/installer-choice check-network
+
 choice_out=$(/opt/oma-id/bin/installer-choice validate http://127.0.0.1:8931)
 printf '%s' "$choice_out" | grep -q 'CI Stub Org'
 printf '%s' "$choice_out" | grep -q 'Compare the requested origin'
