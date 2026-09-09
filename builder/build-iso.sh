@@ -82,8 +82,23 @@ all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omarchy/install/om
 all_packages+=($(grep -v '^#' "$build_cache_dir/airootfs/root/omarchy/install/omarchy-other.packages" | grep -v '^$'))
 all_packages+=($(grep -v '^#' /builder/archinstall.packages | grep -v '^$'))
 
-# Download all the packages to the offline mirror inside the ISO
+# Download all the packages to the offline mirror inside the ISO.
+# Upstream package drift: the selected mirror may no longer carry a package
+# referenced by an upstream list (e.g. broadcom-wl was removed from the
+# Arch repos on 2026-09-09). Drop missing packages with a LOUD warning —
+# never a silent skip — so the build stays reproducible against drift
+# while the log records what was omitted.
 mkdir -p /tmp/offlinedb
+pacman --config /configs/pacman-online-${OMARCHY_MIRROR}.conf --noconfirm -Sy --dbpath /tmp/offlinedb >/dev/null 2>&1 || true
+available_packages=()
+for pkg in "${all_packages[@]}"; do
+  if pacman --config /configs/pacman-online-${OMARCHY_MIRROR}.conf --dbpath /tmp/offlinedb -Si "$pkg" >/dev/null 2>&1; then
+    available_packages+=("$pkg")
+  else
+    echo "WARNING: package not in the ${OMARCHY_MIRROR} mirror, dropping: $pkg"
+  fi
+done
+all_packages=("${available_packages[@]}")
 pacman --config /configs/pacman-online-${OMARCHY_MIRROR}.conf --noconfirm -Syw "${all_packages[@]}" --cachedir $offline_mirror_dir/ --dbpath /tmp/offlinedb
 repo-add --new "$offline_mirror_dir/offline.db.tar.gz" "$offline_mirror_dir/"*.pkg.tar.zst
 
