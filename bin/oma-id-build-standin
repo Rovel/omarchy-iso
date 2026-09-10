@@ -60,6 +60,10 @@ esac
 # Sources in (overwrite on every build — the container is only a cache for
 # /var/cache package state, never for sources).
 docker exec "$builder" mkdir -p /builder /configs /archiso /out
+# Per-build work state inside the reused builder must reset (the package
+# mirror lives under the same tree and must persist, so only targeted paths
+# go): the installer clone target and any half-built work tree.
+docker exec "$builder" bash -c 'rm -rf /var/cache/airootfs/root/omarchy /var/cache/work'
 docker cp "$repo_root/builder/." "$builder:/builder/"
 docker cp "$repo_root/configs/."  "$builder:/configs/"
 docker cp "$repo_root/archiso/." "$builder:/archiso/"
