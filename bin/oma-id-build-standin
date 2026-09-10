@@ -43,12 +43,19 @@ builder="${OMA_ISO_BUILDER_NAME:-oma-iso-builder}"
 if [[ -n "${OMA_ISO_BUILDER_FRESH:-}" ]]; then
   docker rm -f "$builder" >/dev/null 2>&1 || true
 fi
-if ! docker inspect "$builder" >/dev/null 2>&1; then
-  docker run -d --name "$builder" --privileged archlinux/archlinux:latest sleep infinity >/dev/null
-  # First-boot keyring init keeps the first build from tripping on fresh
-  # image pulls (a known Arch image quirk).
-  docker exec "$builder" pacman-key --init >/dev/null 2>&1 || true
-fi
+state=$(docker inspect -f '{{.State.Running}}' "$builder" 2>/dev/null || echo missing)
+case "$state" in
+  missing)
+    docker run -d --name "$builder" --privileged archlinux/archlinux:latest sleep infinity >/dev/null
+    # First-boot keyring init keeps the first build from tripping on fresh
+    # image pulls (a known Arch image quirk).
+    docker exec "$builder" pacman-key --init >/dev/null 2>&1 || true
+    ;;
+  false)
+    # A stopped builder keeps its package cache — restart it.
+    docker start "$builder" >/dev/null
+    ;;
+esac
 
 # Sources in (overwrite on every build — the container is only a cache for
 # /var/cache package state, never for sources).
@@ -56,6 +63,16 @@ docker exec "$builder" mkdir -p /builder /configs /archiso /out
 docker cp "$repo_root/builder/." "$builder:/builder/"
 docker cp "$repo_root/configs/."  "$builder:/configs/"
 docker cp "$repo_root/archiso/." "$builder:/archiso/"
+
+# Memory cap for the squashfs step (the one that got a 15G-VM build
+# OOM-killed with 16 mksquashfs processors): patch the CONTAINER'S copy of
+# mkarchiso — the host checkout stays pristine. Loud, reversible, and the
+# ISO content is unaffected (only packing speed/memory change).
+docker exec "$builder" bash -c 'set -e; f=/archiso/archiso/mkarchiso; \
+  if grep -q "OMA mksquashfs cap" "$f"; then exit 0; fi; \
+  cp "$f" "$f.oma-orig"; \
+  sed -i "s|mksquashfs_options=()|mksquashfs_options=(-processors 4 -mem 2G) # OMA mksquashfs cap|" "$f"; \
+  grep -q "OMA mksquashfs cap" "$f" || { echo "mkarchiso mksquashfs cap patch failed" >&2; exit 1; }'
 
 # Build. The env mirrors what omarchy-iso-make passes for the standin
 # build: stable mirror, upstream installer refs, smoke on, agent layer on.
