@@ -83,19 +83,19 @@ out=$(/opt/oma-id/bin/oma-id-provision-target.sh /tmp/oma-fake-root)
 printf '%s' "$out" | grep -q 'no OMA-ID management staged'
 
 echo '=== provision-target: work-school choice stages the managed install ==='
-printf '{"mode":"work-school","server":"http://stub.test:3000","note":"ci"}' > /run/oma-id/standin-choice.json
+printf '{"mode":"work-school","server":"http://stub.test:3000","note":"ci","device":"dell-lab-7"}' > /run/oma-id/standin-choice.json
 fake_root=$(mktemp -d)
 mkdir -p "$fake_root/etc/pam.d" "$fake_root/usr/bin" "$fake_root/usr/lib/security" \
   "$fake_root/usr/lib/systemd/system" "$fake_root/etc/systemd/system/multi-user.target.wants"
 for svc in sddm omarchy-lock-password omarchy-lock-fingerprint; do
   printf '#%%PAM-1.0\nauth required pam_unix.so\n' > "$fake_root/etc/pam.d/$svc"
 done
-/opt/oma-id/bin/oma-id-provision-target.sh "$fake_root" http://stub.test:3000 ci-host
+/opt/oma-id/bin/oma-id-provision-target.sh "$fake_root" http://stub.test:3000
 test -x "$fake_root/usr/bin/oma-id-agent"
 test -f "$fake_root/usr/lib/security/pam_oma_id.so"
 test -f "$fake_root/usr/lib/systemd/system/oma-id-agent.service"
 test -L "$fake_root/etc/systemd/system/multi-user.target.wants/oma-id-agent.service"
-jq -e '.server_url == "http://stub.test:3000" and .device_id == "ci-host"' "$fake_root/etc/oma-id-agent.json" >/dev/null
+jq -e '.server_url == "http://stub.test:3000" and .device_id == "dell-lab-7"' "$fake_root/etc/oma-id-agent.json" >/dev/null
 for svc in sddm omarchy-lock-password omarchy-lock-fingerprint; do
   grep -q 'pam_oma_id.so' "$fake_root/etc/pam.d/$svc"
 done

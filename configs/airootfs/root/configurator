@@ -97,6 +97,12 @@ Ukrainian|ua'
 # an OMA-ID server connection. See /opt/oma-id/bin/installer-choice.
 if [[ -x /opt/oma-id/bin/installer-choice ]]; then
   /opt/oma-id/bin/installer-choice || abort "oma-id installer choice failed"
+  # STEP 0 names the machine for work/school installs (§7.2 step 1); it
+  # becomes the hostname AND the enrollment proposal — no second prompt.
+  if [[ -f /run/oma-id/standin-choice.json ]]; then
+    OMA_ID_HOSTNAME=$(jq -r '.device // empty' /run/oma-id/standin-choice.json)
+    export OMA_ID_HOSTNAME
+  fi
 fi
 
 keyboard_form
@@ -135,18 +141,23 @@ user_form() {
   full_name=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Full name> ")
   email_address=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Email address> ")
 
-  while true; do
-    hostname=$(gum input --placeholder "Letters, digits, and dashes (or return for 'omarchy')" --prompt.foreground="#845DF9" --prompt "Hostname> ")
+  if [[ -n "${OMA_ID_HOSTNAME:-}" ]]; then
+    # Named in the oma-id STEP 0 (work/school): reuse it verbatim.
+    hostname="$OMA_ID_HOSTNAME"
+  else
+    while true; do
+      hostname=$(gum input --placeholder "Letters, digits, and dashes (or return for 'omarchy')" --prompt.foreground="#845DF9" --prompt "Hostname> ")
 
-    if [[ "$hostname" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]; then
-      break
-    elif [[ -z $hostname ]]; then
-      hostname="omarchy"
-      break
-    else
-      notice "Hostname must be 1-63 letters, digits, or dashes, and cannot start or end with a dash" 1
-    fi
-  done
+      if [[ "$hostname" =~ ^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$ ]]; then
+        break
+      elif [[ -z $hostname ]]; then
+        hostname="omarchy"
+        break
+      else
+        notice "Hostname must be 1-63 letters, digits, or dashes, and cannot start or end with a dash" 1
+      fi
+    done
+  fi
 
   # Pick timezone
   geo_guessed_timezone=$(tzupdate -p 2>/dev/null)
