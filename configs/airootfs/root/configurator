@@ -101,7 +101,8 @@ if [[ -x /opt/oma-id/bin/installer-choice ]]; then
   # becomes the hostname AND the enrollment proposal — no second prompt.
   if [[ -f /run/oma-id/standin-choice.json ]]; then
     OMA_ID_HOSTNAME=$(jq -r '.device // empty' /run/oma-id/standin-choice.json)
-    export OMA_ID_HOSTNAME
+    OMA_ID_MANAGED=$(jq -r 'select(.mode == "work-school") | "1"' /run/oma-id/standin-choice.json)
+    export OMA_ID_HOSTNAME OMA_ID_MANAGED
   fi
 fi
 
@@ -110,8 +111,17 @@ keyboard_form
 # STEP 2: USER
 
 user_form() {
-  step "Let's setup your user account..."
-
+  if [[ -n "${OMA_ID_MANAGED:-}" ]]; then
+    step "Create the local administrator account"
+    echo
+    gum style --padding "0 0 0 $PADDING_LEFT" --foreground 6 \
+      "Your managed login is added automatically on first boot from OMA-ID;"
+    gum style --padding "0 0 0 $PADDING_LEFT" --foreground 6 \
+      "this account is the local fallback for installation and rescue (plan §10)."
+    echo
+  else
+    step "Let's setup your user account..."
+  fi
   while true; do
     username=$(gum input --placeholder "Alphanumeric without spaces (like dhh)" --prompt.foreground="#845DF9" --prompt "Username> ") || abort
 
@@ -138,8 +148,15 @@ user_form() {
   # Hash the password using yescrypt
   password_hash=$(printf '%s' "$password" | openssl passwd -6 -stdin)
 
-  full_name=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Full name> ")
-  email_address=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Email address> ")
+  if [[ -n "${OMA_ID_MANAGED:-}" ]]; then
+    # Managed install: git identity comes from the organization (§7), not
+    # from this prompt — skip it instead of collecting noise.
+    full_name=""
+    email_address=""
+  else
+    full_name=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Full name> ")
+    email_address=$(gum input --placeholder "Used for git authentication (hit return to skip)" --prompt.foreground="#845DF9" --prompt "Email address> ")
+  fi
 
   if [[ -n "${OMA_ID_HOSTNAME:-}" ]]; then
     # Named in the oma-id STEP 0 (work/school): reuse it verbatim.
@@ -159,13 +176,13 @@ user_form() {
     done
   fi
 
-  # Pick timezone
-  geo_guessed_timezone=$(tzupdate -p 2>/dev/null)
-
-  if [[ -n $geo_guessed_timezone ]]; then
-    timezone=$(timedatectl list-timezones | gum choose --height 10 --selected "$geo_guessed_timezone" --header "Timezone") || abort
-  else
-    timezone=$(timedatectl list-timezones | gum filter --height 10 --header "Timezone") || abort
+  # Timezone: geo-guess silently (tzupdate) — the interactive picker is gone
+  # entirely (owner decision: it duplicated a step the guess already covers
+  # and its dynamic-list gum choose crashed when the list came back empty).
+  # Offline installs default to UTC, shown in the confirmation table.
+  timezone=$(tzupdate -p 2>/dev/null || true)
+  if [[ -z $timezone ]]; then
+    timezone="UTC"
   fi
 }
 
