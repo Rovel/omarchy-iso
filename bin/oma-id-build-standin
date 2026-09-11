@@ -62,8 +62,12 @@ esac
 docker exec "$builder" mkdir -p /builder /configs /archiso /out
 # Per-build work state inside the reused builder must reset (the package
 # mirror lives under the same tree and must persist, so only targeted paths
-# go): the installer clone target and any half-built work tree.
-docker exec "$builder" bash -c 'rm -rf /var/cache/airootfs/root/omarchy /var/cache/work'
+# go): the installer clone target, the half-built work tree, the mirror
+# SYMLINK (build-iso.sh recreates it; a stale one kills ln under set -e),
+# and the repo db (repo-add warns on stale entries otherwise).
+docker exec "$builder" bash -c 'rm -rf /var/cache/airootfs/root/omarchy /var/cache/work \
+  /var/cache/omarchy/mirror/offline \
+  /var/cache/airootfs/var/cache/omarchy/mirror/offline/offline.db.tar.gz'
 docker cp "$repo_root/builder/." "$builder:/builder/"
 docker cp "$repo_root/configs/."  "$builder:/configs/"
 docker cp "$repo_root/archiso/." "$builder:/archiso/"
