@@ -96,24 +96,28 @@ docker exec \
   -e HOST_GID="$(id -g)" \
   "$builder" bash /builder/build-iso.sh
 
-# Result out.
-rm -rf /tmp/oma-iso-out && mkdir -p /tmp/oma-iso-out
+# Result out. With OMA_ID_ISO_OUT set (e.g. a roomy Windows drive: the
+# system disk once filled when a ~8G ISO landed on it), copy DIRECTLY to
+# the target — no 8G staging on the system disk.
+iso_out="${OMA_ID_ISO_OUT:-}"
+if [[ -n "$iso_out" ]]; then
+  mkdir -p "$iso_out"
+  dest="$iso_out"
+else
+  mkdir -p release
+  dest="release"
+fi
+tmp_out=$(mktemp -d)
 docker exec "$builder" bash -c 'rm -rf /tmp/oma-iso-out && mkdir /tmp/oma-iso-out && cp /out/*.iso /tmp/oma-iso-out/' || true
-docker cp "$builder:/tmp/oma-iso-out/." /tmp/oma-iso-out/
-mkdir -p release
+docker cp "$builder:/tmp/oma-iso-out/." "$tmp_out/"
 # Pick the NEWEST iso in the copy-out dir (never a stale one from an old run).
-iso_name=$(ls -t /tmp/oma-iso-out/*.iso | head -n1)
-mv "$iso_name" release/
-iso="release/$(basename "$iso_name")"
+iso_name=$(ls -t "$tmp_out"/*.iso | head -n1)
+mv "$iso_name" "$dest/"
+rm -rf "$tmp_out"
+iso="$dest/$(basename "$iso_name")"
 chown "$(id -u):$(id -g)" "$iso" 2>/dev/null || true
 
 echo
 echo "== built =="
 sha256sum "$iso"
 echo "   $iso"
-if [[ -n "${OMA_ID_ISO_OUT:-}" ]]; then
-  mkdir -p "$OMA_ID_ISO_OUT"
-  mv "$iso" "$OMA_ID_ISO_OUT/"
-  echo "   moved to $OMA_ID_ISO_OUT/"
-  rmdir release 2>/dev/null || true
-fi
