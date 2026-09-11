@@ -67,7 +67,7 @@ docker exec "$builder" mkdir -p /builder /configs /archiso /out
 # and the repo db (repo-add warns on stale entries otherwise).
 docker exec "$builder" bash -c 'rm -rf /var/cache/airootfs/root/omarchy /var/cache/work \
   /var/cache/omarchy/mirror/offline \
-  /var/cache/airootfs/var/cache/omarchy/mirror/offline/offline.db.tar.gz'
+  /var/cache/airootfs/var/cache/omarchy/mirror/offline/offline.db.tar.gz /out'
 docker cp "$repo_root/builder/." "$builder:/builder/"
 docker cp "$repo_root/configs/."  "$builder:/configs/"
 docker cp "$repo_root/archiso/." "$builder:/archiso/"
@@ -101,7 +101,8 @@ rm -rf /tmp/oma-iso-out && mkdir -p /tmp/oma-iso-out
 docker exec "$builder" bash -c 'rm -rf /tmp/oma-iso-out && mkdir /tmp/oma-iso-out && cp /out/*.iso /tmp/oma-iso-out/' || true
 docker cp "$builder:/tmp/oma-iso-out/." /tmp/oma-iso-out/
 mkdir -p release
-iso_name=$(ls /tmp/oma-iso-out/*.iso | head -n1)
+# Pick the NEWEST iso in the copy-out dir (never a stale one from an old run).
+iso_name=$(ls -t /tmp/oma-iso-out/*.iso | head -n1)
 mv "$iso_name" release/
 iso="release/$(basename "$iso_name")"
 chown "$(id -u):$(id -g)" "$iso" 2>/dev/null || true
