@@ -13,7 +13,7 @@ on:
 env:
   # Pinned oma-id commit (not on crates.io → git pin). Bump deliberately, together with
   # the smoke matrix it ships (tests/iso-smoke in the oma-id repo).
-  OMA_ID_SHA: 62ebe915dde99fd7356ecfaf0615663f04868198
+  OMA_ID_SHA: 8643a1b0e27a8a7e61dd79376ebf380eb3454720
 
 jobs:
   packaging-smoke:
