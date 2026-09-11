@@ -37,6 +37,15 @@ install_omarchy() {
 
   configure_login_for_unencrypted_install
 
+  # OMA-ID: provision the installed system from the installer choice (§7.2
+  # step 6) — only when the standin layer and an explicit work/school choice
+  # are present; personal installs are untouched (ADR-006). Runs AFTER the
+  # omarchy install so our PAM wiring is not overwritten.
+  if [[ -x /opt/oma-id/bin/oma-id-provision-target.sh ]]; then
+    omarchy_hostname=$(jq -r '.hostname // empty' user_configuration.json 2>/dev/null || true)
+    /opt/oma-id/bin/oma-id-provision-target.sh /mnt "" "${omarchy_hostname:-workstation-1}"       || echo "oma-id provisioning failed (continuing; the system stays unmanaged)" >&2
+  fi
+
   # Reboot if requested by installer
   if [[ -f /mnt/var/tmp/omarchy-install-completed ]]; then
     reboot

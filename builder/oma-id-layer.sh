@@ -59,6 +59,13 @@ install -D -m 0755 "$src/tests/iso-smoke/run-smoke.sh" "$AIROOTFS/opt/oma-id/run
 # when the layer is present; personal installs never see it.
 install -D -m 0755 "$src/tests/iso-smoke/installer-choice.sh" "$AIROOTFS/opt/oma-id/bin/installer-choice"
 
+# Installed-system provisioning (§7.2 step 6): the .automated_script.sh
+# hook copies the pinned agent + module + unit + the §6.2-validated server
+# URL into the target root AFTER the omarchy install — gated on the
+# work/school choice; personal installs get nothing.
+install -D -m 0755 "$src/tests/iso-smoke/oma-id-provision-target.sh" \
+  "$AIROOTFS/opt/oma-id/bin/oma-id-provision-target.sh"
+
 # The real endpoint agent (§11.1/§11.2) + its unit (packaging/arch).
 install -D -m 0755 "$real_agent" "$AIROOTFS/usr/bin/oma-id-agent"
 install -D -m 0644 "$src/packaging/arch/oma-id-agent.service" \

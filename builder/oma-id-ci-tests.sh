@@ -71,4 +71,34 @@ echo '=== installer-choice: validate under zsh (compat) ==='
 zsh_out=$(zsh /opt/oma-id/bin/installer-choice validate http://127.0.0.1:8931)
 printf '%s' "$zsh_out" | grep -q 'CI Stub Org'
 
+echo '=== provision-target: no choice file is a clean no-op (personal default) ==='
+rm -f /run/oma-id/standin-choice.json
+out=$(/opt/oma-id/bin/oma-id-provision-target.sh /tmp/oma-fake-root)
+printf '%s' "$out" | grep -q 'no OMA-ID management staged'
+
+mkdir -p /run/oma-id
+echo '=== provision-target: non work-school choice stages nothing ==='
+printf '{"mode":"work-school-personal","server":"http://stub.test:3000","note":"x"}' > /run/oma-id/standin-choice.json
+out=$(/opt/oma-id/bin/oma-id-provision-target.sh /tmp/oma-fake-root)
+printf '%s' "$out" | grep -q 'no OMA-ID management staged'
+
+echo '=== provision-target: work-school choice stages the managed install ==='
+printf '{"mode":"work-school","server":"http://stub.test:3000","note":"ci"}' > /run/oma-id/standin-choice.json
+fake_root=$(mktemp -d)
+mkdir -p "$fake_root/etc/pam.d" "$fake_root/usr/bin" "$fake_root/usr/lib/security" \
+  "$fake_root/usr/lib/systemd/system" "$fake_root/etc/systemd/system/multi-user.target.wants"
+for svc in sddm omarchy-lock-password omarchy-lock-fingerprint; do
+  printf '#%%PAM-1.0\nauth required pam_unix.so\n' > "$fake_root/etc/pam.d/$svc"
+done
+/opt/oma-id/bin/oma-id-provision-target.sh "$fake_root" http://stub.test:3000 ci-host
+test -x "$fake_root/usr/bin/oma-id-agent"
+test -f "$fake_root/usr/lib/security/pam_oma_id.so"
+test -f "$fake_root/usr/lib/systemd/system/oma-id-agent.service"
+test -L "$fake_root/etc/systemd/system/multi-user.target.wants/oma-id-agent.service"
+jq -e '.server_url == "http://stub.test:3000" and .device_id == "ci-host"' "$fake_root/etc/oma-id-agent.json" >/dev/null
+for svc in sddm omarchy-lock-password omarchy-lock-fingerprint; do
+  grep -q 'pam_oma_id.so' "$fake_root/etc/pam.d/$svc"
+done
+echo 'provision-target: staged agent, module, unit, config, and §8.2 PAM wiring ✓'
+
 echo 'ALL LAYER CI TESTS GREEN'
