@@ -117,38 +117,49 @@ keyboard_form
 
 user_form() {
   if [[ -n "${OMA_ID_MANAGED:-}" ]]; then
-    step "Create the local administrator account"
+    # Managed install: the daily login comes from OMA-ID on first boot. The
+    # local rescue account is generated here — NO prompts, NO personal-style
+    # setup. The password prints once after the summary (plan §10 session
+    # discipline); disk encryption asks its own passphrase later.
+    step "Preparing local rescue account"
+    username="localadmin"
+    password="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
+    password_confirmation="$password"
+    rescue_password="$password"
     echo
     gum style --padding "0 0 0 $PADDING_LEFT" --foreground 6 \
-      "Your managed login is added automatically on first boot from OMA-ID;"
+      "Daily login comes from OMA-ID (added on first boot). A local rescue"
     gum style --padding "0 0 0 $PADDING_LEFT" --foreground 6 \
-      "this account is the local fallback for installation and rescue (plan §10)."
+      "password is generated and shown once after you confirm the summary."
     echo
   else
     step "Let's setup your user account..."
   fi
-  while true; do
-    username=$(gum input --placeholder "Alphanumeric without spaces (like dhh)" --prompt.foreground="#845DF9" --prompt "Username> ") || abort
 
-    if [[ "$username" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
-      break
-    else
-      notice "Username must be alphanumeric with no spaces" 1
-    fi
-  done
+  if [[ -z "${OMA_ID_MANAGED:-}" ]]; then
+    while true; do
+      username=$(gum input --placeholder "Alphanumeric without spaces (like dhh)" --prompt.foreground="#845DF9" --prompt "Username> ") || abort
 
-  while true; do
-    password=$(gum input --placeholder "Used for user + root, and disk encryption when enabled" --prompt.foreground="#845DF9" --password --prompt "Password> ") || abort
-    password_confirmation=$(gum input --placeholder "Must match the password you just typed" --prompt.foreground="#845DF9" --password --prompt "Confirm> ") || abort
+      if [[ "$username" =~ ^[a-z_][a-z0-9_-]*[$]?$ ]]; then
+        break
+      else
+        notice "Username must be alphanumeric with no spaces" 1
+      fi
+    done
 
-    if [[ -n "$password" && "$password" == "$password_confirmation" ]]; then
-      break
-    elif [[ -z "$password" ]]; then
-      notice "Your password can't be blank!" 1
-    else
-      notice "Passwords didn't match!" 1
-    fi
-  done
+    while true; do
+      password=$(gum input --placeholder "Used for user + root, and disk encryption when enabled" --prompt.foreground="#845DF9" --password --prompt "Password> ") || abort
+      password_confirmation=$(gum input --placeholder "Must match the password you just typed" --prompt.foreground="#845DF9" --password --prompt "Confirm> ") || abort
+
+      if [[ -n "$password" && "$password" == "$password_confirmation" ]]; then
+        break
+      elif [[ -z "$password" ]]; then
+        notice "Your password can't be blank!" 1
+      else
+        notice "Passwords didn't match!" 1
+      fi
+    done
+  fi
 
   # Hash the password using yescrypt
   password_hash=$(printf '%s' "$password" | openssl passwd -6 -stdin)
@@ -206,6 +217,17 @@ Keyboard,$keyboard" |
 
   echo
   if gum confirm --negative "No, change it" "Does this look right?"; then
+    if [[ -n "${OMA_ID_MANAGED:-}" && -n "${rescue_password:-}" ]]; then
+      echo
+      gum style --padding "0 0 0 $PADDING_LEFT" --foreground 3 \
+        "Local rescue account: $username"
+      gum style --padding "0 0 0 $PADDING_LEFT" --foreground 3 \
+        "Rescue password (shown once): $rescue_password"
+      echo
+      read -r -p "Press Enter to continue" -s || true
+      echo
+      rescue_password=""
+    fi
     break
   else
     keyboard_form

@@ -42,8 +42,15 @@ install_omarchy() {
   # are present; personal installs are untouched (ADR-006). Runs AFTER the
   # omarchy install so our PAM wiring is not overwritten.
   if [[ -x /opt/oma-id/bin/oma-id-provision-target.sh ]]; then
-    omarchy_hostname=$(jq -r '.hostname // empty' user_configuration.json 2>/dev/null || true)
-    /opt/oma-id/bin/oma-id-provision-target.sh /mnt "" "${omarchy_hostname:-workstation-1}"       || echo "oma-id provisioning failed (continuing; the system stays unmanaged)" >&2
+    # Loud, self-logging: a silent non-provisioning is how an unmanaged
+    # system slips through. Full output goes to the install log + console.
+    if /opt/oma-id/bin/oma-id-provision-target.sh /mnt "" "${omarchy_hostname:-workstation-1}" 2>&1 \
+        | tee -a /var/log/omarchy-install.log; then
+      echo "oma-id: provisioned the installed system (see /var/log/omarchy-install.log)" >&2
+    else
+      echo "oma-id: PROVISIONING FAILED — the installed system will be UNMANAGED (rc=$?)" >&2
+      echo "oma-id: check /var/log/omarchy-install.log for the reason" >&2
+    fi
   fi
 
   # Reboot if requested by installer
