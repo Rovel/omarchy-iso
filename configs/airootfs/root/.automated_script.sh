@@ -46,10 +46,17 @@ install_omarchy() {
     # system slips through. Full output goes to the install log + console.
     if /opt/oma-id/bin/oma-id-provision-target.sh /mnt "" "${omarchy_hostname:-workstation-1}" 2>&1 \
         | tee -a /var/log/omarchy-install.log; then
-      echo "oma-id: provisioned the installed system (see /var/log/omarchy-install.log)" >&2
+      if [[ -f /mnt/usr/bin/oma-id-agent && -f /mnt/etc/oma-id-agent.json ]] \
+          && [[ -f /mnt/usr/lib/security/pam_oma_id.so ]]; then
+        echo "oma-id: VERIFIED — agent + module + config staged into /mnt" >&2
+        echo "oma-id: detail log: /var/log/oma-id-provision-install.log on the INSTALLED system" >&2
+      else
+        echo "oma-id: hook exited 0 but staged files MISSING from /mnt — UNMANAGED" >&2
+        echo "oma-id: see /var/log/omarchy-install.log (live) for what happened" >&2
+      fi
     else
       echo "oma-id: PROVISIONING FAILED — the installed system will be UNMANAGED (rc=$?)" >&2
-      echo "oma-id: check /var/log/omarchy-install.log for the reason" >&2
+      echo "oma-id: check /var/log/omarchy-install.log + /var/log/oma-id-provision-install.log" >&2
     fi
   fi
 
