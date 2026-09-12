@@ -7,9 +7,14 @@ source "$OMARCHY_INSTALL/helpers/all.sh"
 command -v tzupdate >/dev/null || sudo pacman -Sy --noconfirm tzupdate
 
 abort() {
-  gum style "${1:-Aborted installation}"
+  local message="${1:-Aborted installation}"
+  gum style "$message"
   echo
   gum style "You can retry later by running: ./.automated_script.sh"
+  # Persist the reason (live /var/log is tmpfs — survives until reboot) so a
+  # lost/scroll-past screen never hides the cause.
+  printf '%s \n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$message" \
+    >> /var/log/omarchy-configurator-error.log 2>/dev/null || true
   exit 1
 }
 
@@ -196,7 +201,6 @@ Password,$(printf "%${#password}s" | tr ' ' '*')
 Full name,${full_name:-[Skipped]}
 Email address,${email_address:-[Skipped]}
 Hostname,$hostname
-Timezone,$timezone
 Keyboard,$keyboard" |
     gum table -s "," -p | sed "s/^/${PADDING_LEFT_SPACES}/"
 
@@ -296,6 +300,12 @@ disk_form() {
       disk_options="$disk_options$disk_info"$'\n'
     fi
   done <<<"$available_disks"
+
+  # Empty list = gum choose crashes with "no option provided". Diagnose it
+  # explicitly instead of letting the error scroll past.
+  if [[ -z "$disk_options" ]]; then
+    abort "No installable disks found (lsblk: $(lsblk -dpno NAME,TYPE 2>&1 | tr '\n' ' | ' | head -c 400))"
+  fi
 
   selected_display=$(echo "$disk_options" | gum choose --header "Select install disk") || abort
   disk=$(echo "$selected_display" | awk '{print $1}')
