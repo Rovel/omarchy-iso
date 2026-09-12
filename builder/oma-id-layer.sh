@@ -100,13 +100,24 @@ for service in sddm omarchy-lock-password omarchy-lock-fingerprint; do
 done
 
 {
+  # PROVENANCE is a BUILD-TIME fingerprint of the ISO layer. It records the
+  # build-time defaults ONLY — the operator's install-time inputs (the server
+  # URL and machine name typed in STEP 0) deliberately never appear here:
+  # build artifacts must not carry per-deployment data (a public artifact
+  # would leak the organization's server address). Those values live in
+  # /run/oma-id/standin-choice.json on the live boot and are written to the
+  # INSTALLED system's /etc/oma-id-agent.json by the provision hook.
+  echo "# Build-time fingerprint only: install-time inputs (server URL, machine"
+  echo "# name from STEP 0) are intentionally NOT recorded here — they live in"
+  echo "# /run/oma-id/standin-choice.json during the live boot and are written"
+  echo "# to the installed system's /etc/oma-id-agent.json by provisioning."
   echo "repo:     $OMA_ID_REPO"
   echo "commit:   $OMA_ID_SHA"
   echo "subject:  $commit_subject"
   echo "built:    $(date -u +%Y-%m-%dT%H:%M:%SZ)"
   echo "rustc:    $(rustc --version)"
-  echo "server:   ${OMA_ID_SERVER_URL:-UNCONFIGURED}"
-  echo "device:   $OMA_ID_DEVICE_ID"
+  echo "server:   ${OMA_ID_SERVER_URL:-UNCONFIGURED}   (build-time default; install-time value never stored here)"
+  echo "device:   $OMA_ID_DEVICE_ID              (build-time default; install-time value never stored here)"
   sha256sum "$module" "$fake_agent" "$real_agent" "$client" | sed "s|$src/||"
 } >"$AIROOTFS/opt/oma-id/PROVENANCE"
 
