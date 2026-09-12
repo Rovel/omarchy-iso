@@ -112,9 +112,13 @@ docker exec "$builder" bash -c 'rm -rf /tmp/oma-iso-out && mkdir /tmp/oma-iso-ou
 docker cp "$builder:/tmp/oma-iso-out/." "$tmp_out/"
 # Pick the NEWEST iso in the copy-out dir (never a stale one from an old run).
 iso_name=$(ls -t "$tmp_out"/*.iso | head -n1)
-mv "$iso_name" "$dest/"
+# Unique per build: embed the oma-id pin so two builds with the same date
+# can never be confused on a burn stick (different content, identical
+# filename, identical size cost an evening of debugging once).
+stamped=$(basename "$iso_name" .iso)-${pin:0:7}.iso
+mv "$iso_name" "$dest/$stamped"
 rm -rf "$tmp_out"
-iso="$dest/$(basename "$iso_name")"
+iso="$dest/$stamped"
 chown "$(id -u):$(id -g)" "$iso" 2>/dev/null || true
 
 echo
