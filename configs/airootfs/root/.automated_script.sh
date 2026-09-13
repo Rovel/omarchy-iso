@@ -188,6 +188,17 @@ install_base_system() {
     arch-chroot /mnt mount /boot
   fi
 
+  # OMA-ID: back the enrollment choice into the target root NOW (the /run
+  # copy is tmpfs and could be lost to a reboot/cleanup before the provision
+  # hook runs — this survives on the installed disk).
+  if [[ -f /run/oma-id/standin-choice.json ]]; then
+    mkdir -p /mnt/etc/oma-id
+    cp /run/oma-id/standin-choice.json /mnt/etc/oma-id/standin-choice.json
+    echo "oma-id: enrollment choice backed up to the target (/etc/oma-id/standin-choice.json)" >&2
+  else
+    echo "oma-id: no enrollment choice at /run/oma-id — target backup skipped" >&2
+  fi
+
   # The installed fstab keeps the ESP root-only, but Omarchy finalization runs
   # as the target user and must discover the Limine config before using sudo to
   # replace it. Temporarily allow reads and directory traversal during install.
