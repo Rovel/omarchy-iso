@@ -436,6 +436,28 @@ else
 fi
 
 if [[ $encrypt_installation == true ]]; then
+  # Disk-unlock secret (plan §10): REQUIRED for the encrypted baseline, entered
+  # locally, never sent to the server. On MANAGED installs it is a separate
+  # secret from the rescue login password — the one rescue password is not
+  # reused as the disk key.
+  if [[ -n "${OMA_ID_MANAGED:-}" ]]; then
+    while true; do
+      disk_secret=$(gum input --password --placeholder "Disk encryption passphrase (needed at every boot; NOT your login)" --prompt.foreground="#845DF9" --prompt "Disk passphrase> ") || abort
+      disk_secret_confirm=$(gum input --placeholder "Confirm the disk passphrase" --prompt.foreground="#845DF9" --password --prompt "Confirm> ") || abort
+      if [[ -n "$disk_secret" && "$disk_secret" == "$disk_secret_confirm" ]]; then
+        break
+      elif [[ -z "$disk_secret" ]]; then
+        notice "The disk passphrase can't be blank!" 1
+      else
+        notice "Passphrases didn't match!" 1
+      fi
+    done
+    # The $disk_secret is used ONLY for LUKS; the login credential stays the
+    # separately generated rescue one. Nothing here is sent to the server.
+    encryption_password_escaped=$(echo -n "$disk_secret" | jq -Rsa)
+  else
+    encryption_password_escaped="$password_escaped"
+  fi
   disk_encryption_config=$(cat <<-_EOF_
 ,
         "disk_encryption": {
@@ -443,7 +465,7 @@ if [[ $encrypt_installation == true ]]; then
             "lvm_volumes": [],
             "iter_time": 2000,
             "partitions": [ "8c2c2b92-1070-455d-b76a-56263bab24aa" ],
-            "encryption_password": $password_escaped
+            "encryption_password": $encryption_password_escaped
         }
 _EOF_
 )

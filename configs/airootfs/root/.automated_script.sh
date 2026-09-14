@@ -9,6 +9,25 @@ use_omarchy_helpers() {
   source /root/omarchy/install/helpers/all.sh
 }
 
+# oma_ckpt <tag> — records whether /run/oma-id (the STEP 0 choice) survives
+# each stage into BOTH the live install log AND (once /mnt exists) the
+# installed system's /var/log/oma-id-provision-install.log, so a vanished
+# choice names the window instead of disappearing silently.
+oma_ckpt() {
+  local tag="$1" state
+  if [[ -f /run/oma-id/standin-choice.json ]]; then state=present; else state=MISSING; fi
+  printf 'oma-id ckpt [%s] %s: /run/oma-id choice=%s (%s)
+' \
+    "$(date -u +%FT%TZ)" "$tag" "$state" \
+    "$(ls /run/oma-id 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')" \
+    >> /var/log/omarchy-install.log 2>&1 || true
+  printf 'oma-id ckpt [%s] %s: /run/oma-id choice=%s (%s)
+' \
+    "$(date -u +%FT%TZ)" "$tag" "$state" \
+    "$(ls /run/oma-id 2>/dev/null | tr '\n' ' ' | sed 's/ *$//')" \
+    >> /mnt/var/log/oma-id-provision-install.log 2>/dev/null || true
+}
+
 run_configurator() {
   set_tokyo_night_colors
   ./configurator
@@ -149,6 +168,7 @@ cleanup_install_disk() {
 }
 
 install_base_system() {
+  oma_ckpt install_base_start
   # Initialize and populate the keyring
   pacman-key --init
   pacman-key --populate archlinux
@@ -158,6 +178,8 @@ install_base_system() {
   pacman -Sy --noconfirm
 
   cleanup_install_disk "$(install_disk)"
+
+  oma_ckpt before_archinstall
 
   # Workarounds for archinstall 4.2 regressions under Python 3.14:
   # 1. sync_log_to_install_medium: `self.target / absolute_logfile` drops
@@ -181,6 +203,8 @@ install_base_system() {
     --skip-ntp \
     --skip-wkd \
     --skip-wifi-check
+
+  oma_ckpt after_archinstall
 
   # Archinstall unmounts the ESP when it finishes. Omarchy's boot finalizer
   # needs the generated Limine config and EFI artifacts available under /boot.
@@ -307,6 +331,7 @@ chroot_bash() {
 if [[ $(tty) == "/dev/tty1" ]]; then
   use_omarchy_helpers
   run_configurator
+  oma_ckpt after_configurator
   install_arch
   install_omarchy
 fi
