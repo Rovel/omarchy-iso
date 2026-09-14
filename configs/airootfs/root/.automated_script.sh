@@ -192,18 +192,25 @@ install_base_system() {
   # copy is tmpfs and could be lost to a reboot/cleanup before the provision
   # hook runs — this survives on the installed disk). Always log the /run
   # state so a vanished choice is diagnosable from the install console.
+  # Diagnostics ALWAYS land in the installed system's provision log too
+  # (the live /var/log expires with the boot; the target log survives).
+  oma_report() {
+    printf 'oma-id: %s\n' "$1" >&2
+    printf 'oma-id: %s\n' "$1" >> /mnt/var/log/oma-id-provision-install.log 2>/dev/null || true
+  }
+  mkdir -p /mnt/var/log
   if [[ -f /run/oma-id/standin-choice.json ]]; then
     mkdir -p /mnt/etc/oma-id
     cp /run/oma-id/standin-choice.json /mnt/etc/oma-id/standin-choice.json
     cp /run/oma-id/enrollment.json /mnt/etc/oma-id/enrollment.json 2>/dev/null || true
     cp /run/oma-id/device.key /mnt/var/lib/oma-id/device.key 2>/dev/null || true
     chmod 0600 /mnt/var/lib/oma-id/device.key 2>/dev/null || true
-    echo "oma-id: enrollment choice + key backed up to the target" >&2
-    echo "oma-id: /run/oma-id = $(ls -1 /run/oma-id 2>/dev/null | tr '\n' ' ')" >&2
-    echo "oma-id: choice = $(head -c 200 /run/oma-id/standin-choice.json 2>/dev/null)" >&2
+    oma_report "enrollment choice + key backed up to the target"
+    oma_report "/run/oma-id = $(ls -1 /run/oma-id 2>/dev/null | tr '\n' ' ')"
+    oma_report "choice = $(head -c 200 /run/oma-id/standin-choice.json 2>/dev/null)"
   else
-    echo "oma-id: no enrollment choice at /run/oma-id — target backup skipped" >&2
-    echo "oma-id: /run/oma-id ls = '$(ls -la /run/oma-id 2>&1 | tr '\n' ' ')'" >&2
+    oma_report "no enrollment choice at /run/oma-id — target backup skipped"
+    oma_report "/run/oma-id ls = '$(ls -la /run/oma-id 2>&1 | tr '\n' ' ')'"
   fi
 
   # The installed fstab keeps the ESP root-only, but Omarchy finalization runs

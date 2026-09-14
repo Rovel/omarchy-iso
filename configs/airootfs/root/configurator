@@ -102,12 +102,15 @@ Ukrainian|ua'
 # an OMA-ID server connection. See /opt/oma-id/bin/installer-choice.
 if [[ -x /opt/oma-id/bin/installer-choice ]]; then
   /opt/oma-id/bin/installer-choice || abort "oma-id installer choice failed"
-  # STEP 0 names the machine for work/school installs (§7.2 step 1); it
-  # becomes the hostname AND the enrollment proposal — no second prompt.
   if [[ -f /run/oma-id/standin-choice.json ]]; then
     OMA_ID_HOSTNAME=$(jq -r '.device // empty' /run/oma-id/standin-choice.json)
     OMA_ID_MANAGED=$(jq -r 'select(.mode == "work-school") | "1"' /run/oma-id/standin-choice.json)
     export OMA_ID_HOSTNAME OMA_ID_MANAGED
+  else
+    # Fail fast: a missing choice file means STEP 0 did not record anything —
+    # every later stage (target backup, provision hook, first boot) would
+    # silently produce an UNMANAGED system. Stop here instead.
+    abort "oma-id: installer-choice did not write /run/oma-id/standin-choice.json — aborting (would be unmanaged)"
   fi
 fi
 
