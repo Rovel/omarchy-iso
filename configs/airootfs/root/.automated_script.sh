@@ -190,13 +190,20 @@ install_base_system() {
 
   # OMA-ID: back the enrollment choice into the target root NOW (the /run
   # copy is tmpfs and could be lost to a reboot/cleanup before the provision
-  # hook runs — this survives on the installed disk).
+  # hook runs — this survives on the installed disk). Always log the /run
+  # state so a vanished choice is diagnosable from the install console.
   if [[ -f /run/oma-id/standin-choice.json ]]; then
     mkdir -p /mnt/etc/oma-id
     cp /run/oma-id/standin-choice.json /mnt/etc/oma-id/standin-choice.json
-    echo "oma-id: enrollment choice backed up to the target (/etc/oma-id/standin-choice.json)" >&2
+    cp /run/oma-id/enrollment.json /mnt/etc/oma-id/enrollment.json 2>/dev/null || true
+    cp /run/oma-id/device.key /mnt/var/lib/oma-id/device.key 2>/dev/null || true
+    chmod 0600 /mnt/var/lib/oma-id/device.key 2>/dev/null || true
+    echo "oma-id: enrollment choice + key backed up to the target" >&2
+    echo "oma-id: /run/oma-id = $(ls -1 /run/oma-id 2>/dev/null | tr '\n' ' ')" >&2
+    echo "oma-id: choice = $(head -c 200 /run/oma-id/standin-choice.json 2>/dev/null)" >&2
   else
     echo "oma-id: no enrollment choice at /run/oma-id — target backup skipped" >&2
+    echo "oma-id: /run/oma-id ls = '$(ls -la /run/oma-id 2>&1 | tr '\n' ' ')'" >&2
   fi
 
   # The installed fstab keeps the ESP root-only, but Omarchy finalization runs
