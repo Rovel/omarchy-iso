@@ -40,7 +40,14 @@ echo "$OMARCHY_MIRROR" > "$build_cache_dir/airootfs/root/omarchy_mirror"
 if [[ -d /omarchy ]]; then
   cp -rp /omarchy "$build_cache_dir/airootfs/root/omarchy"
 else
-  git clone -b $OMARCHY_INSTALLER_REF https://github.com/$OMARCHY_INSTALLER_REPO.git "$build_cache_dir/airootfs/root/omarchy"
+  # Clone the DEFAULT branch when no ref is pinned — upstream has renamed
+  # their default branch repeatedly (master -> quattro, 2026-09); a hard-coded
+  # -b ref breaks on every rename.
+  if [[ -n "${OMARCHY_INSTALLER_REF:-}" ]]; then
+    git clone -b "$OMARCHY_INSTALLER_REF" https://github.com/$OMARCHY_INSTALLER_REPO.git "$build_cache_dir/airootfs/root/omarchy"
+  else
+    git clone https://github.com/$OMARCHY_INSTALLER_REPO.git "$build_cache_dir/airootfs/root/omarchy"
+  fi
 fi
 
 # Make log uploader available in the ISO too
