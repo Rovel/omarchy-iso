@@ -84,6 +84,9 @@ printf '%s' "$out" | grep -q 'no OMA-ID management staged'
 
 echo '=== provision-target: work-school choice stages the managed install ==='
 printf '{"mode":"work-school","server":"http://stub.test:3000","note":"ci","device":"dell-lab-7"}' > /run/oma-id/standin-choice.json
+# The reserve-then-activate flow requires the STEP 0 device seed.
+mkdir -p /run/oma-id
+head -c 32 /dev/urandom > /run/oma-id/device.key && chmod 0600 /run/oma-id/device.key
 fake_root=$(mktemp -d)
 mkdir -p "$fake_root/etc/pam.d" "$fake_root/usr/bin" "$fake_root/usr/lib/security" \
   "$fake_root/usr/lib/systemd/system" "$fake_root/etc/systemd/system/multi-user.target.wants"
@@ -94,11 +97,19 @@ done
 test -x "$fake_root/usr/bin/oma-id-agent"
 test -f "$fake_root/usr/lib/security/pam_oma_id.so"
 test -f "$fake_root/usr/lib/systemd/system/oma-id-agent.service"
-test -L "$fake_root/etc/systemd/system/multi-user.target.wants/oma-id-agent.service"
+# first-boot sequencing: daemon NOT pre-enabled; first-boot unit IS.
+test -x "$fake_root/usr/libexec/oma-id/first-boot.sh"
+test -f "$fake_root/usr/lib/systemd/system/oma-id-first-boot.service"
+test -L "$fake_root/etc/systemd/system/multi-user.target.wants/oma-id-first-boot.service"
+if [[ -e "$fake_root/etc/systemd/system/multi-user.target.wants/oma-id-agent.service" ]]; then
+  echo 'FAIL: the daemon must not be enabled before bootstrap (one-time credential burn)'
+  exit 1
+fi
 jq -e '.server_url == "http://stub.test:3000" and .device_id == "dell-lab-7"' "$fake_root/etc/oma-id-agent.json" >/dev/null
+[[ -s "$fake_root/var/lib/oma-id/device.key" ]] || { echo 'FAIL: staged device key missing'; exit 1; }
 for svc in sddm omarchy-lock-password omarchy-lock-fingerprint; do
   grep -q 'pam_oma_id.so' "$fake_root/etc/pam.d/$svc"
 done
-echo 'provision-target: staged agent, module, unit, config, and §8.2 PAM wiring ✓'
+echo 'provision-target: staged agent, module, unit, key, first-boot sequencing, config, and §8.2 PAM wiring ✓'
 
 echo 'ALL LAYER CI TESTS GREEN'
