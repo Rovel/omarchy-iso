@@ -356,6 +356,49 @@ fi
 # Live ISO uses the same offline pacman.conf.
 cp "$build_cache_dir/pacman-offline.conf" "$build_cache_dir/airootfs/etc/pacman.conf"
 
+# ── Optional disposable OMA-ID layer (no-op unless OMA_ID_SHA is set) ──────
+# Installs pam_oma_id.so + the real agent + systemd units + §8.2 PAM wiring +
+# /opt/oma-id/* harnesses into the airootfs. Gated on OMA_ID_SHA; ordinary
+# quattro builds are untouched (ADR-006).
+if [[ -n "${OMA_ID_SHA:-}" ]]; then
+  AIROOTFS="$build_cache_dir/airootfs" \
+    OMA_ID_SERVER_URL="${OMA_ID_SERVER_URL:-}" \
+    OMA_ID_DEVICE_ID="${OMA_ID_DEVICE_ID:-}" \
+    /builder/oma-id-layer.sh
+fi
+
+# ── Optional OMA-ID smoke on the installed live root (OMA_ID_SMOKE=1) ─────
+# Same mechanism as the pre-quattro track: a generated
+# airootfs/root/customize_airootfs.sh (mkarchiso runs it in the live-root
+# chroot, then deletes it) gated by OMA_ID_SMOKE + a marker, plus
+# file_permissions for the layer's executables.
+if [[ -n "${OMA_ID_SHA:-}" ]]; then
+  cat >>"$build_cache_dir/profiledef.sh" <<'PERMS'
+file_permissions+=(
+  ["/opt/oma-id/bin/fake_agent"]="0:0:755"
+  ["/opt/oma-id/bin/pam-test-client"]="0:0:755"
+  ["/opt/oma-id/bin/installer-choice"]="0:0:755"
+  ["/opt/oma-id/bin/oma-id-step0.sh"]="0:0:755"
+  ["/opt/oma-id/bin/oma-id-provision-target.sh"]="0:0:755"
+  ["/usr/bin/oma-id-agent"]="0:0:755"
+  ["/usr/lib/systemd/system/oma-id-agent.service"]="0:0:644"
+  ["/etc/oma-id-agent.json"]="0:0:644"
+  ["/etc/pam.d/sddm"]="0:0:644"
+  ["/etc/pam.d/omarchy-lock-password"]="0:0:644"
+  ["/etc/pam.d/omarchy-lock-fingerprint"]="0:0:644"
+)
+PERMS
+
+  cat >"$build_cache_dir/airootfs/root/customize_airootfs.sh" <<'SMOKE'
+#!/bin/bash
+[[ -f /opt/oma-id/.oma-id-smoke ]] || exit 0
+echo "--- OMA-ID smoke on the installed live root ---"
+bash /opt/oma-id/run-smoke.sh
+echo "oma-id smoke rc=$?"
+SMOKE
+  chmod 0755 "$build_cache_dir/airootfs/root/customize_airootfs.sh"
+fi
+
 # Build the ISO.
 mkarchiso -v -w "$build_cache_dir/work/" -o /out/ "$build_cache_dir/"
 

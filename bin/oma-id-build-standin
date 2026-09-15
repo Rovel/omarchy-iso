@@ -1,0 +1,132 @@
+#!/bin/bash
+# Build the oma-id standin ISO — the ONE entry point used by BOTH CI and
+# local builds (the workflow's iso-build job calls this script verbatim).
+#
+# Parity rules:
+# - The oma-id pin lives in .github/workflows/oma-id-p0-standin.yml (single
+#   source of truth); this script extracts it and, when OMA_ID_SHA is also
+#   present in the environment (CI), asserts the two match.
+# - The in-build smoke (OMA_ID_SMOKE=1) runs identically in both places.
+# - Sources enter the build container via `docker cp`, not bind mounts:
+#   the same flow works on CI runners and on Docker-Desktop/WSL hosts whose
+#   file-share bridge mangles bind mounts (files arrive as directories).
+# - The builder container is REUSED across builds, so the offline package
+#   mirror inside it persists — repeat builds are incremental. Set
+#   OMA_ISO_BUILDER_FRESH=1 to start a clean one.
+#
+# Output: release/<image>.iso in this repository. Set OMA_ID_ISO_OUT to
+# relocate the result (e.g. a non-system disk).
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+repo_root="$PWD"
+
+workflow=.github/workflows/oma-id-p0-standin.yml
+pin=$(grep -oE 'OMA_ID_SHA: [0-9a-f]{40}' "$workflow" | grep -oE '[0-9a-f]{40}')
+if [[ -z "$pin" ]]; then
+  echo "oma-id-build-standin: no OMA_ID_SHA pin found in $workflow" >&2
+  exit 1
+fi
+if [[ -n "${OMA_ID_SHA:-}" && "${OMA_ID_SHA}" != "$pin" ]]; then
+  echo "oma-id-build-standin: pin drift!" >&2
+  echo "  workflow file: $pin" >&2
+  echo "  environment:   $OMA_ID_SHA" >&2
+  exit 1
+fi
+
+echo "== oma-id standin ISO build (same entry point as CI) =="
+echo "   pin: $pin   smoke: on   builder container: ${OMA_ISO_BUILDER_NAME:-oma-iso-builder}"
+
+git submodule update --init --recursive --jobs=8 >/dev/null
+
+builder="${OMA_ISO_BUILDER_NAME:-oma-iso-builder}"
+if [[ -n "${OMA_ISO_BUILDER_FRESH:-}" ]]; then
+  docker rm -f "$builder" >/dev/null 2>&1 || true
+fi
+state=$(docker inspect -f '{{.State.Running}}' "$builder" 2>/dev/null || echo missing)
+case "$state" in
+  missing)
+    docker run -d --name "$builder" --privileged archlinux/archlinux:latest sleep infinity >/dev/null
+    # First-boot keyring init keeps the first build from tripping on fresh
+    # image pulls (a known Arch image quirk).
+    docker exec "$builder" pacman-key --init >/dev/null 2>&1 || true
+    ;;
+  false)
+    # A stopped builder keeps its package cache — restart it.
+    docker start "$builder" >/dev/null
+    ;;
+esac
+
+# Sources in (overwrite on every build — the container is only a cache for
+# /var/cache package state, never for sources).
+docker exec "$builder" mkdir -p /builder /configs /archiso /out
+# Per-build work state inside the reused builder must reset (the package
+# mirror lives under the same tree and must persist, so only targeted paths
+# go): the installer clone target, the half-built work tree, the mirror
+# SYMLINK (build-iso.sh recreates it; a stale one kills ln under set -e),
+# and the repo db (repo-add warns on stale entries otherwise).
+docker exec "$builder" bash -c '
+  for m in $(findmnt -R -n -o TARGET /var/cache/work 2>/dev/null); do
+    umount "$m" 2>/dev/null || true
+  done
+  rm -rf /var/cache/airootfs/root/omarchy /var/cache/work \
+  /var/cache/omarchy/mirror/offline \
+  /var/cache/airootfs/var/cache/omarchy/mirror/offline/offline.db.tar.gz /out
+'
+docker cp "$repo_root/builder/." "$builder:/builder/"
+docker cp "$repo_root/configs/."  "$builder:/configs/"
+docker cp "$repo_root/archiso/." "$builder:/archiso/"
+
+# Memory cap for the squashfs step (the one that got a 15G-VM build
+# OOM-killed with 16 mksquashfs processors): patch the CONTAINER'S copy of
+# mkarchiso — the host checkout stays pristine. Loud, reversible, and the
+# ISO content is unaffected (only packing speed/memory change).
+docker exec "$builder" bash -c 'set -e; f=/archiso/archiso/mkarchiso; \
+  if grep -q "OMA mksquashfs cap" "$f"; then exit 0; fi; \
+  cp "$f" "$f.oma-orig"; \
+  sed -i "s|mksquashfs_options=()|mksquashfs_options=(-processors 4 -mem 2G) # OMA mksquashfs cap|" "$f"; \
+  grep -q "OMA mksquashfs cap" "$f" || { echo "mkarchiso mksquashfs cap patch failed" >&2; exit 1; }'
+
+# Build. The env mirrors what omarchy-iso-make passes for the standin
+# build: stable mirror, upstream installer refs, smoke on, agent layer on.
+docker exec \
+  -e OMARCHY_MIRROR="${OMARCHY_MIRROR:-stable}" \
+  -e OMARCHY_INSTALLER_REPO="${OMARCHY_INSTALLER_REPO:-basecamp/omarchy}" \
+  -e OMA_ID_SHA="$pin" \
+  -e OMA_ID_SMOKE=1 \
+  -e OMA_ID_SERVER_URL="${OMA_ID_SERVER_URL:-}" \
+  -e OMA_ID_DEVICE_ID="${OMA_ID_DEVICE_ID:-workstation-1}" \
+  -e HOST_UID="$(id -u)" \
+  -e HOST_GID="$(id -g)" \
+  "$builder" bash /builder/build-iso.sh
+
+# Result out. With OMA_ID_ISO_OUT set (e.g. a roomy Windows drive: the
+# system disk once filled when a ~8G ISO landed on it), copy DIRECTLY to
+# the target — no 8G staging on the system disk.
+iso_out="${OMA_ID_ISO_OUT:-}"
+if [[ -n "$iso_out" ]]; then
+  mkdir -p "$iso_out"
+  dest="$iso_out"
+else
+  mkdir -p release
+  dest="release"
+fi
+tmp_out=$(mktemp -d)
+docker exec "$builder" bash -c 'rm -rf /tmp/oma-iso-out && mkdir /tmp/oma-iso-out && cp /out/*.iso /tmp/oma-iso-out/' || true
+docker cp "$builder:/tmp/oma-iso-out/." "$tmp_out/"
+# Pick the NEWEST iso in the copy-out dir (never a stale one from an old run).
+iso_name=$(ls -t "$tmp_out"/*.iso | head -n1)
+# Unique per build: embed BOTH the oma-id pin AND the omarchy-iso commit —
+# a name stamped with only one of them is identical across builds that
+# change the other (exactly what hit us: two ISOs, same -<pin> name).
+iso_commit=$(git rev-parse --short HEAD)
+stamped="$(basename "$iso_name" .iso)-oma${pin:0:7}-iso${iso_commit}.iso"
+mv "$iso_name" "$dest/$stamped"
+rm -rf "$tmp_out"
+iso="$dest/$stamped"
+chown "$(id -u):$(id -g)" "$iso" 2>/dev/null || true
+
+echo
+echo "== built =="
+sha256sum "$iso"
+echo "   $iso"
