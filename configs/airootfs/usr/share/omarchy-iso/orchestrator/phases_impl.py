@@ -790,7 +790,7 @@ def verify_protected_mounts(ctx: InstallContext) -> None:
         esp_mp.mkdir(parents=True, exist_ok=True)
         subprocess.run(["mount", esp_dev, str(esp_mp)], check=True)
 
-    info(f"› protected target verified: kernel={storage.get('kernel', 'linux')} esp={boot['esp_mount']}")
+    info(f"› protected target verified: kernel={storage.get('kernel', 'linux-omarchy')} esp={boot['esp_mount']}")
 
 
 def _is_mountpoint(path: Path) -> bool:
@@ -1666,7 +1666,7 @@ def validate_boot(ctx: InstallContext) -> None:
     default_limine = ctx.target / "etc" / "default" / "limine"
     config_text = _limine_combined_config_text(ctx, default_limine.read_text())
     uki_prefix = _limine_setting(config_text, "CUSTOM_UKI_NAME", "omarchy") or "omarchy"
-    kernel = storage.get("kernel") or (ctx.user_configuration.get("kernels") or ["linux"])[0]
+    kernel = storage.get("kernel") or (ctx.user_configuration.get("kernels") or ["linux-omarchy"])[0]
 
     if arch.has_uefi():
         limine_binary = esp_mount / boot.get("esp_path", "/EFI/limine").lstrip("/") / boot.get("efi_binary", "limine_x64.efi")
