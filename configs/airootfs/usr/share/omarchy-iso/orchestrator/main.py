@@ -28,6 +28,7 @@ def build_phases(ctx: InstallContext):
     create/mount the layout, while protected provides an already-mounted target
     and the partition details Omarchy needs for boot/fstab generation.
     """
+    from .oma_id import stage_oma_id
     from .phases_impl import (
         prepare_live,
         prepare_install_target,
@@ -54,6 +55,7 @@ def build_phases(ctx: InstallContext):
         # Before finalize_limine_boot: the deferred-provisioning cryptkey drop-in and keyfile
         # must be in place for the final UKI build.
         ("Staging provisioning",          stage_provisioning_state),
+        ("Staging OMA-ID management",     stage_oma_id),
         ("Finalizing Limine boot",     finalize_limine_boot),
         ("Finalizing user",            run_chroot_finalizer),
         ("Configuring login",          configure_login),

@@ -257,20 +257,42 @@ confirm_prepare_for_another_owner() {
 # operator sets nothing user-specific.
 
 user_form() {
-  step "Let's setup your user account..."
+  if [[ -n "${OMA_ID_MANAGED:-}" ]]; then
+    # Managed install (docs/p0/installer-enrollment.md): the daily login is
+    # the OMA-ID provisioned account (added at first boot). A generated
+    # local rescue account is created here — no prompts. Its one-time
+    # password prints once after the summary (plan §10 local discipline).
+    step "Preparing local rescue account"
+    username="localadmin"
+    password="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
+    oma_rescue_password="$password"
+    password_hash=$(printf '%s' "$password" | openssl passwd -6 -stdin)
+    full_name="Local Administrator"
+    email_address=""
+    echo
+    say --foreground 6 "Daily login comes from OMA-ID (added on first boot). A local"
+    say --foreground 6 "rescue password is generated and shown once after the summary."
+    echo
+  else
+    step "Let's setup your user account..."
 
-  # Each prompt reports 0 (set), OMARCHY_FORM_BACK (Esc), or OMARCHY_FORM_SIGNAL
-  # (Ctrl+C). Both non-zero cases unwind to user_step, which decides what they
-  # mean here; the form itself never aborts.
-  omarchy_prompt_username || return $?
-  omarchy_prompt_password || return $?
+    # Each prompt reports 0 (set), OMARCHY_FORM_BACK (Esc), or OMARCHY_FORM_SIGNAL
+    # (Ctrl+C). Both non-zero cases unwind to user_step, which decides what they
+    # mean here; the form itself never aborts.
+    omarchy_prompt_username || return $?
+    omarchy_prompt_password || return $?
 
-  # Hash the password with SHA-512 crypt ($6$), which is what openssl passwd offers
-  password_hash=$(printf '%s' "$password" | openssl passwd -6 -stdin)
+    # Hash the password with SHA-512 crypt ($6$), which is what openssl passwd offers
+    password_hash=$(printf '%s' "$password" | openssl passwd -6 -stdin)
 
-  omarchy_prompt_identity || return $?
-  omarchy_prompt_hostname || return $?
-  omarchy_prompt_timezone || return $?
+    omarchy_prompt_identity || return $?
+    if [[ -n "${OMA_ID_DEVICE_NAME:-}" ]]; then
+      hostname="$OMA_ID_DEVICE_NAME"
+    else
+      omarchy_prompt_hostname || return $?
+    fi
+    omarchy_prompt_timezone || return $?
+  fi
 }
 
 # Returns 0 on confirmed account details, or as soon as the keyboard screen
@@ -303,6 +325,15 @@ Keyboard,$keyboard" |
 
     echo
     if gum confirm --negative "No, change it" "Does this look right?"; then
+      if [[ -n "${OMA_ID_MANAGED:-}" && -n "${oma_rescue_password:-}" ]]; then
+        echo
+        say --foreground 3 "Local rescue account: $username"
+        say --foreground 3 "Rescue password (shown once): $oma_rescue_password"
+        echo
+        read -r -s -p "Press Enter to continue" || true
+        echo
+        oma_rescue_password=""
+      fi
       break
     else
       keyboard_form
@@ -444,6 +475,32 @@ write_user_files() {
   echo "$email_address" >user_email_address.txt
   printf '%s\n' "$encrypt_installation" >user_encrypt_installation.txt
 
+  if [[ -n "${OMA_ID_MANAGED:-}" ]]; then
+    # Managed install (docs/p0/installer-enrollment.md): the reservation data
+    # travels through the config files the orchestrator reads at start — so a
+    # mid-install /run wipe cannot strand the enrollment. The device SEED is
+    # the sensitive half; it lives in user_credentials.json (same sensitivity
+    # class as the LUKS passphrase already there) and never leaves the machine
+    # except into the LUKS-encrypted target.
+    local oma_key_hex
+    oma_key_hex=$(od -An -tx1 /run/oma-id/device.key 2>/dev/null | tr -d ' \n')
+    local oma_meta='{}'
+    if [[ -f /run/oma-id/standin-choice.json ]]; then
+      oma_meta=$(jq -c '{mode: .mode, server: .server, device: .device}' /run/oma-id/standin-choice.json)
+    fi
+    local oma_request_id
+    oma_request_id=$(jq -r '.request_id // 0' /run/oma-id/enrollment.json 2>/dev/null || echo 0)
+
+    jq -c --arg key "$oma_key_hex" --argjson meta "$oma_meta" --argjson rid "$oma_request_id" \
+      '. + {oma_id: {enabled: true, server_url: $meta.server, device_id: $meta.device, \
+                     request_id: $rid, device_key_hex: $key, meta: $meta}}' \
+      user_credentials.json > /tmp/uc.tmp && mv /tmp/uc.tmp user_credentials.json
+
+    jq --argjson meta "$oma_meta" --argjson rid "$oma_request_id" \
+      '.omarchy_install.oma_id = {enabled: true, server_url: $meta.server, device_id: $meta.device, request_id: $rid}' \
+      user_configuration.json > /tmp/uc2.tmp && mv /tmp/uc2.tmp user_configuration.json
+  fi
+
   if $defer_provisioning; then
     cat <<-_EOF_ >user_credentials.json
 {
@@ -460,7 +517,24 @@ _EOF_
 
   local credentials_encryption_line=""
   if [[ $encrypt_installation == true ]]; then
-    credentials_encryption_line="    \"encryption_password\": $password_escaped,"
+    if [[ -n "${OMA_ID_MANAGED:-}" ]]; then
+      # §10: the disk-unlock secret is distinct from the rescue login password,
+      # entered locally, never sent to the server.
+      local disk_secret="" disk_confirm
+      while true; do
+        disk_secret=$(gum input --password --placeholder "Needed at every boot; NOT your login password" \
+          --prompt.foreground="#845DF9" --prompt "Disk passphrase> ") || abort
+        disk_confirm=$(gum input --password --placeholder "Confirm the disk passphrase" \
+          --prompt.foreground="#845DF9" --password --prompt "Confirm> ") || abort
+        if [[ -n "$disk_secret" && "$disk_secret" == "$disk_confirm" ]]; then break; fi
+        notice "Passphrases didn't match!" 1
+      done
+      local oma_encryption_escaped
+      oma_encryption_escaped=$(echo -n "$disk_secret" | jq -Rsa)
+      credentials_encryption_line="    \"encryption_password\": $oma_encryption_escaped,"
+    else
+      credentials_encryption_line="    \"encryption_password\": $password_escaped,"
+    fi
   fi
 
   cat <<-_EOF_ >user_credentials.json
@@ -1042,6 +1116,21 @@ wait_for_stable_terminal
 greeter
 
 keyboard_form
+
+# ── OMA-ID STEP 0: ownership choice + server identity + reservation ────────
+# (docs/p0/installer-enrollment.md, §6.3/§7.2 step 5). Personal installs are
+# byte-identical to stock quattro. The reservation POST carries the device
+# PUBLIC key + DMI identity; the private seed travels to the orchestrator via
+# user_credentials.json (same sensitivity class as the LUKS passphrase) so a
+# mid-install /run wipe cannot strand the enrollment.
+OMA_ID_MANAGED=""
+if [[ -x /opt/oma-id/bin/installer-choice ]]; then
+  source /opt/oma-id/bin/oma-id-step0.sh
+  if [[ -f /run/oma-id/standin-choice.json ]]; then
+    OMA_ID_MANAGED=$(jq -r 'select(.mode == "work-school") | "1"' /run/oma-id/standin-choice.json)
+    export OMA_ID_MANAGED
+  fi
+fi
 
 # ── OMA-ID STEP 0: ownership choice + server identity + reservation ────────
 # (docs/p0/installer-enrollment.md, §6.3/§7.2 step 5). Personal installs are
