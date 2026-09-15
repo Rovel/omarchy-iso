@@ -91,7 +91,6 @@ docker exec "$builder" bash -c 'set -e; f=/archiso/archiso/mkarchiso; \
 # build: stable mirror, upstream installer refs, smoke on, agent layer on.
 docker exec \
   -e OMARCHY_MIRROR="${OMARCHY_MIRROR:-stable}" \
-  -e OMARCHY_INSTALLER_REPO="${OMARCHY_INSTALLER_REPO:-basecamp/omarchy}" \
   -e OMA_ID_SHA="$pin" \
   -e OMA_ID_SMOKE=1 \
   -e OMA_ID_SERVER_URL="${OMA_ID_SERVER_URL:-}" \
