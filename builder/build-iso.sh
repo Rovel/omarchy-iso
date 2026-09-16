@@ -206,8 +206,15 @@ mapfile -t all_packages < <(
 # "target not found". Published Omarchy runtime packages that predate the rename
 # still list it in omarchy-other.packages, so map it here until every channel
 # ships a runtime that names broadcom-wl-dkms itself.
+# apple-bcm-firmware lives only in the arch-mact2 community repo
+# (mirror.funami.tech), which has been dropping HTTP/2 streams repeatedly
+# (2026-09-14/15). It is Apple-hardware firmware — useless on non-Apple
+# hardware — so drop it loudly like the broadcom-wl precedent.
 mapfile -t all_packages < <(
-  printf '%s\n' "${all_packages[@]}" | sed 's/^broadcom-wl$/broadcom-wl-dkms/' | sort -u
+  printf '%s\n' "${all_packages[@]}" |
+    sed -e 's/^broadcom-wl$/broadcom-wl-dkms/' |
+    grep -vx apple-bcm-firmware |
+    sort -u
 )
 
 # With --local-source we already built these omarchy* packages directly into
