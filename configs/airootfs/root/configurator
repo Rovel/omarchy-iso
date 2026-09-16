@@ -1124,22 +1124,6 @@ if [[ -x /opt/oma-id/bin/installer-choice ]]; then
   fi
 fi
 
-# ── OMA-ID STEP 0: ownership choice + server identity + reservation ────────
-# (docs/p0/installer-enrollment.md, §6.3/§7.2 step 5). Personal installs are
-# byte-identical to stock quattro. The reservation POST carries the device
-# PUBLIC key + DMI identity; the private seed travels to the orchestrator via
-# user_credentials.json (same sensitivity class as the LUKS passphrase) so a
-# mid-install /run wipe cannot strand the enrollment.
-OMA_ID_MANAGED=""
-if [[ -x /opt/oma-id/bin/installer-choice ]]; then
-  source /opt/oma-id/bin/oma-id-step0.sh
-  if [[ -f /run/oma-id/standin-choice.json ]]; then
-    OMA_ID_MANAGED=$(jq -r 'select(.mode == "work-school") | "1"' /run/oma-id/standin-choice.json)
-    OMA_ID_DEVICE_NAME=$(jq -r '.device // empty' /run/oma-id/standin-choice.json)
-    export OMA_ID_MANAGED OMA_ID_DEVICE_NAME
-  fi
-fi
-
 # Normal install: keyboard (loaded above, so the LUKS passphrase is typed under
 # the right layout) → user → disk → install mode. The user step can unwind to
 # the keyboard screen and arm deferral there, hence the second check.
