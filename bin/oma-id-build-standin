@@ -69,9 +69,12 @@ docker exec "$builder" bash -c '
   for m in $(findmnt -R -n -o TARGET /var/cache/work 2>/dev/null); do
     umount "$m" 2>/dev/null || true
   done
-  rm -rf /var/cache/airootfs/root/omarchy /var/cache/work \
-  /var/cache/omarchy/mirror/offline \
-  /var/cache/airootfs/var/cache/omarchy/mirror/offline/offline.db.tar.gz /out
+  # FULL source-airootfs reset: the airootfs is re-seeded from releng+configs
+  # by build-iso.sh every build. Without this, anything a previous build left
+  # in the overlay (e.g. a plymouth theme a pacstrap once wrote) poisons every
+  # later build with pacman "exists in filesystem" conflicts.
+  rm -rf /var/cache/airootfs /var/cache/work \
+  /var/cache/omarchy/mirror/offline /out
 '
 docker cp "$repo_root/builder/." "$builder:/builder/"
 docker cp "$repo_root/configs/."  "$builder:/configs/"
