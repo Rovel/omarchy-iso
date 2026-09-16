@@ -295,6 +295,23 @@ user_form() {
   fi
 }
 
+# ── OMA-ID: embed the reservation + device seed into the orchestrator's
+# inputs (called at the very end, when BOTH json files exist). Single-line jq
+# programs — the previous multi-line continuations inside single quotes
+# reached jq as literal backslashes and failed to compile (2 compile errors).
+write_oma_id_state() {
+  [[ -n "${OMA_ID_MANAGED:-}" ]] || return 0
+  [[ -f /run/oma-id/device.key && -f user_credentials.json && -f user_configuration.json ]] || {
+    abort "oma-id: cannot embed the reservation (missing device.key or the orchestrator json files)"
+  }
+  local oma_key_hex oma_meta oma_request_id
+  oma_key_hex=$(od -An -tx1 /run/oma-id/device.key | tr -d ' \n')
+  oma_meta=$(jq -c '{mode: .mode, server: .server, device: .device}' /run/oma-id/standin-choice.json)
+  oma_request_id=$(jq -r '.request_id // 0' /run/oma-id/enrollment.json)
+  jq -c --arg key "$oma_key_hex" --argjson meta "$oma_meta" --argjson rid "$oma_request_id" '. + {oma_id: {enabled: true, server_url: $meta.server, device_id: $meta.device, request_id: $rid, device_key_hex: $key, meta: $meta}}' user_credentials.json > /tmp/uc.tmp && mv /tmp/uc.tmp user_credentials.json
+  jq --argjson meta "$oma_meta" --argjson rid "$oma_request_id" '.omarchy_install.oma_id = {enabled: true, server_url: $meta.server, device_id: $meta.device, request_id: $rid}' user_configuration.json > /tmp/uc2.tmp && mv /tmp/uc2.tmp user_configuration.json
+}
+
 # Returns 0 on confirmed account details, or as soon as the keyboard screen
 # arms deferred provisioning.
 user_step() {
@@ -474,32 +491,6 @@ write_user_files() {
   echo "$full_name" >user_full_name.txt
   echo "$email_address" >user_email_address.txt
   printf '%s\n' "$encrypt_installation" >user_encrypt_installation.txt
-
-  if [[ -n "${OMA_ID_MANAGED:-}" ]]; then
-    # Managed install (docs/p0/installer-enrollment.md): the reservation data
-    # travels through the config files the orchestrator reads at start — so a
-    # mid-install /run wipe cannot strand the enrollment. The device SEED is
-    # the sensitive half; it lives in user_credentials.json (same sensitivity
-    # class as the LUKS passphrase already there) and never leaves the machine
-    # except into the LUKS-encrypted target.
-    local oma_key_hex
-    oma_key_hex=$(od -An -tx1 /run/oma-id/device.key 2>/dev/null | tr -d ' \n')
-    local oma_meta='{}'
-    if [[ -f /run/oma-id/standin-choice.json ]]; then
-      oma_meta=$(jq -c '{mode: .mode, server: .server, device: .device}' /run/oma-id/standin-choice.json)
-    fi
-    local oma_request_id
-    oma_request_id=$(jq -r '.request_id // 0' /run/oma-id/enrollment.json 2>/dev/null || echo 0)
-
-    jq -c --arg key "$oma_key_hex" --argjson meta "$oma_meta" --argjson rid "$oma_request_id" \
-      '. + {oma_id: {enabled: true, server_url: $meta.server, device_id: $meta.device, \
-                     request_id: $rid, device_key_hex: $key, meta: $meta}}' \
-      user_credentials.json > /tmp/uc.tmp && mv /tmp/uc.tmp user_credentials.json
-
-    jq --argjson meta "$oma_meta" --argjson rid "$oma_request_id" \
-      '.omarchy_install.oma_id = {enabled: true, server_url: $meta.server, device_id: $meta.device, request_id: $rid}' \
-      user_configuration.json > /tmp/uc2.tmp && mv /tmp/uc2.tmp user_configuration.json
-  fi
 
   if $defer_provisioning; then
     cat <<-_EOF_ >user_credentials.json
@@ -1128,7 +1119,8 @@ if [[ -x /opt/oma-id/bin/installer-choice ]]; then
   source /opt/oma-id/bin/oma-id-step0.sh
   if [[ -f /run/oma-id/standin-choice.json ]]; then
     OMA_ID_MANAGED=$(jq -r 'select(.mode == "work-school") | "1"' /run/oma-id/standin-choice.json)
-    export OMA_ID_MANAGED
+    OMA_ID_DEVICE_NAME=$(jq -r '.device // empty' /run/oma-id/standin-choice.json)
+    export OMA_ID_MANAGED OMA_ID_DEVICE_NAME
   fi
 fi
 
@@ -1143,7 +1135,8 @@ if [[ -x /opt/oma-id/bin/installer-choice ]]; then
   source /opt/oma-id/bin/oma-id-step0.sh
   if [[ -f /run/oma-id/standin-choice.json ]]; then
     OMA_ID_MANAGED=$(jq -r 'select(.mode == "work-school") | "1"' /run/oma-id/standin-choice.json)
-    export OMA_ID_MANAGED
+    OMA_ID_DEVICE_NAME=$(jq -r '.device // empty' /run/oma-id/standin-choice.json)
+    export OMA_ID_MANAGED OMA_ID_DEVICE_NAME
   fi
 fi
 
@@ -1352,6 +1345,8 @@ cat <<-_EOF_ >user_configuration.json
     "version": "3.0.9"
 }
 _EOF_
+
+write_oma_id_state
 
 if [[ $1 == "dry" ]]; then
   print_dry_run_files
