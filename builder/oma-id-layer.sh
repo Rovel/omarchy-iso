@@ -77,10 +77,12 @@ install -D -m 0755 "$src/tests/iso-smoke/oma-id-provision-target.sh" \
 install -D -m 0755 "$real_agent" "$AIROOTFS/usr/bin/oma-id-agent"
 install -D -m 0644 "$src/packaging/arch/oma-id-agent.service" \
   "$AIROOTFS/usr/lib/systemd/system/oma-id-agent.service"
-# Enable in the live environment (the standard archiso mechanism).
-mkdir -p "$AIROOTFS/etc/systemd/system/multi-user.target.wants"
-ln -sfn /usr/lib/systemd/system/oma-id-agent.service \
-  "$AIROOTFS/etc/systemd/system/multi-user.target.wants/oma-id-agent.service"
+# Do NOT enable the live agent on the ISO: its RuntimeDirectory=oma-id means
+# systemd DELETES /run/oma-id every time the (unconfigured, fail-closed)
+# service stops — it restarts in a loop and wipes the STEP 0 enrollment state
+# mid-install (the recurring "/run wiped" mystery across the whole series).
+# The installed system's agent is enabled by its own first-boot sequencing.
+
 
 # Agent configuration (per-deployment data). An empty server URL keeps the
 # agent fail-closed at boot with an explicit journal message — the operator

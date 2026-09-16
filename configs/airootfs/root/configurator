@@ -301,13 +301,13 @@ user_form() {
 # reached jq as literal backslashes and failed to compile (2 compile errors).
 write_oma_id_state() {
   [[ -n "${OMA_ID_MANAGED:-}" ]] || return 0
-  [[ -f /run/oma-id/device.key && -f user_credentials.json && -f user_configuration.json ]] || {
+  [[ -f /run/oma-id-install/device.key && -f user_credentials.json && -f user_configuration.json ]] || {
     abort "oma-id: cannot embed the reservation (missing device.key or the orchestrator json files)"
   }
   local oma_key_hex oma_meta oma_request_id
-  oma_key_hex=$(od -An -tx1 /run/oma-id/device.key | tr -d ' \n')
-  oma_meta=$(jq -c '{mode: .mode, server: .server, device: .device}' /run/oma-id/standin-choice.json)
-  oma_request_id=$(jq -r '.request_id // 0' /run/oma-id/enrollment.json)
+  oma_key_hex=$(od -An -tx1 /run/oma-id-install/device.key | tr -d ' \n')
+  oma_meta=$(jq -c '{mode: .mode, server: .server, device: .device}' /run/oma-id-install/standin-choice.json)
+  oma_request_id=$(jq -r '.request_id // 0' /run/oma-id-install/enrollment.json)
   jq -c --arg key "$oma_key_hex" --argjson meta "$oma_meta" --argjson rid "$oma_request_id" '. + {oma_id: {enabled: true, server_url: $meta.server, device_id: $meta.device, request_id: $rid, device_key_hex: $key, meta: $meta}}' user_credentials.json > /tmp/uc.tmp && mv /tmp/uc.tmp user_credentials.json
   jq --argjson meta "$oma_meta" --argjson rid "$oma_request_id" '.omarchy_install.oma_id = {enabled: true, server_url: $meta.server, device_id: $meta.device, request_id: $rid}' user_configuration.json > /tmp/uc2.tmp && mv /tmp/uc2.tmp user_configuration.json
 }
@@ -1117,9 +1117,9 @@ keyboard_form
 OMA_ID_MANAGED=""
 if [[ -x /opt/oma-id/bin/installer-choice ]]; then
   source /opt/oma-id/bin/oma-id-step0.sh
-  if [[ -f /run/oma-id/standin-choice.json ]]; then
-    OMA_ID_MANAGED=$(jq -r 'select(.mode == "work-school") | "1"' /run/oma-id/standin-choice.json)
-    OMA_ID_DEVICE_NAME=$(jq -r '.device // empty' /run/oma-id/standin-choice.json)
+  if [[ -f /run/oma-id-install/standin-choice.json ]]; then
+    OMA_ID_MANAGED=$(jq -r 'select(.mode == "work-school") | "1"' /run/oma-id-install/standin-choice.json)
+    OMA_ID_DEVICE_NAME=$(jq -r '.device // empty' /run/oma-id-install/standin-choice.json)
     export OMA_ID_MANAGED OMA_ID_DEVICE_NAME
   fi
 fi
