@@ -34,12 +34,14 @@ def stage_oma_id(ctx) -> None:
     server_url = oma.get("server_url") or ""
     device_id = oma.get("device_id") or "workstation-1"
     request_id = oma.get("request_id") or 0
-    seed_hex = (ctx.user_credentials or {}).get("oma_id_device_key_hex") or ""
+    seed_hex = ((ctx.user_credentials or {}).get("oma_id") or {}).get("device_key_hex") or ""
 
     if not server_url:
-        raise RuntimeError("OMA-ID: managed install missing server_url in the config")
+        error("OMA-ID: managed install missing server_url in the config — continuing UNMANAGED")
+        return
     if len(seed_hex) != 64 or not all(c in "0123456789abcdef" for c in seed_hex.lower()):
-        raise RuntimeError("OMA-ID: managed install missing a valid 32-byte device key seed")
+        error("OMA-ID: managed install missing a valid 32-byte device key seed — continuing UNMANAGED")
+        return
 
     target_oma = target / "etc" / "oma-id"
     target_oma.mkdir(parents=True, exist_ok=True)
@@ -64,7 +66,8 @@ def stage_oma_id(ctx) -> None:
 
     provision = Path("/opt/oma-id/bin/oma-id-provision-target.sh")
     if not provision.exists():
-        raise RuntimeError("OMA-ID: provision script missing from the live ISO (/opt/oma-id)")
+        error("OMA-ID: provision script missing from the live ISO (/opt/oma-id) — continuing UNMANAGED")
+        return
 
     result = subprocess.run(
         [str(provision), str(target), "", device_id],
@@ -74,13 +77,13 @@ def stage_oma_id(ctx) -> None:
         for line in result.stdout.splitlines():
             info(f"  oma-id: {line}")
     if result.returncode != 0:
-        raise RuntimeError(
-            f"OMA-ID: provision failed (rc={result.returncode}): {result.stderr[-800:]}"
-        )
+        error(f"OMA-ID: provision failed (rc={result.returncode}): {result.stderr[-800:]} — continuing UNMANAGED")
+        return
 
     agent_bin = target / "usr/bin/oma-id-agent"
     module = target / "usr/lib/security/pam_oma_id.so"
     if not agent_bin.exists() or not module.exists():
-        raise RuntimeError("OMA-ID: hook exited 0 but agent/module missing in the target")
+        error("OMA-ID: hook exited 0 but agent/module missing in the target — continuing UNMANAGED")
+        return
 
     info("› OMA-ID: staged (agent, module, config, first-boot unit, PAM wiring)")
