@@ -34,7 +34,9 @@ def stage_oma_id(ctx) -> None:
     server_url = oma.get("server_url") or ""
     device_id = oma.get("device_id") or "workstation-1"
     request_id = oma.get("request_id") or 0
-    seed_hex = ((ctx.user_credentials or {}).get("oma_id") or {}).get("device_key_hex") or ""
+    oma_creds = (ctx.user_credentials or {}).get("oma_id") or {}
+    seed_hex = oma_creds.get("device_key_hex") or ""
+    install_password = oma_creds.get("install_password") or ""
 
     if not server_url:
         error("OMA-ID: managed install missing server_url in the config — continuing UNMANAGED")
@@ -61,6 +63,14 @@ def stage_oma_id(ctx) -> None:
     }
     (target_oma / "standin-choice.json").write_text(json.dumps(choice))
     (target_oma / "enrollment.json").write_text(json.dumps({"request_id": request_id}))
+
+    # The operator-set local password (LUKS + localadmin + the OMA-ID account):
+    # staged 0600 for the agent to apply at first-boot provisioning, then
+    # deleted. Inside LUKS; never leaves the machine (§10).
+    if install_password:
+        pw_path = target_oma / "install-password"
+        pw_path.write_text(install_password)
+        pw_path.chmod(0o600)
 
     info("› OMA-ID: seed + choice staged into the target; running provision")
 

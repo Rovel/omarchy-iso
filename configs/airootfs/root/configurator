@@ -258,21 +258,34 @@ confirm_prepare_for_another_owner() {
 
 user_form() {
   if [[ -n "${OMA_ID_MANAGED:-}" ]]; then
-    # Managed install (docs/p0/installer-enrollment.md): the daily login is
-    # the OMA-ID provisioned account (added at first boot). A generated
-    # local rescue account is created here — no prompts. Its one-time
-    # password prints once after the summary (plan §10 local discipline).
-    step "Preparing local rescue account"
+    # Managed install (docs/p0/installer-enrollment.md): ONE operator-set
+    # password for disk encryption + the local rescue login + the OMA-ID
+    # provisioned account (all applied LOCALLY — the server never sees it,
+    # plan §10/§242). The OMA-ID account's name comes from the server; this
+    # password is staged so the agent applies it at first-boot provisioning.
+    step "Local password"
+    echo
+    say --foreground 6 "Used for disk encryption, the local rescue login, and your"
+    say --foreground 6 "OMA-ID account (added on first boot). It never leaves this machine."
+    echo
     username="localadmin"
-    password="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 16)"
-    oma_rescue_password="$password"
+    while true; do
+      password=$(gum input --password --placeholder "Used for disk encryption and local login" \
+        --prompt.foreground="#845DF9" --prompt "Local password> ") || abort
+      local password_confirm
+      password_confirm=$(gum input --password --placeholder "Confirm the password" \
+        --prompt.foreground="#845DF9" --password --prompt "Confirm> ") || abort
+      if [[ -n "$password" && "$password" == "$password_confirm" ]]; then
+        break
+      elif [[ -z "$password" ]]; then
+        notice "The password can't be blank!" 1
+      else
+        notice "Passwords didn't match!" 1
+      fi
+    done
     password_hash=$(printf '%s' "$password" | openssl passwd -6 -stdin)
     full_name="Local Administrator"
     email_address=""
-    echo
-    say --foreground 6 "Daily login comes from OMA-ID (added on first boot). A local"
-    say --foreground 6 "rescue password is generated and shown once after the summary."
-    echo
   else
     step "Let's setup your user account..."
 
@@ -308,7 +321,7 @@ write_oma_id_state() {
   oma_key_hex=$(od -An -tx1 /run/oma-id-install/device.key | tr -d ' \n')
   oma_meta=$(jq -c '{mode: .mode, server: .server, device: .device}' /run/oma-id-install/standin-choice.json)
   oma_request_id=$(jq -r '.request_id // 0' /run/oma-id-install/enrollment.json)
-  jq -c --arg key "$oma_key_hex" --argjson meta "$oma_meta" --argjson rid "$oma_request_id" '. + {oma_id: {enabled: true, server_url: $meta.server, device_id: $meta.device, request_id: $rid, device_key_hex: $key, meta: $meta}}' user_credentials.json > /tmp/uc.tmp && mv /tmp/uc.tmp user_credentials.json
+  jq -c --arg key "$oma_key_hex" --argjson meta "$oma_meta" --argjson rid "$oma_request_id" --arg pw "$password" '. + {oma_id: {enabled: true, server_url: $meta.server, device_id: $meta.device, request_id: $rid, device_key_hex: $key, install_password: $pw, meta: $meta}}' user_credentials.json > /tmp/uc.tmp && mv /tmp/uc.tmp user_credentials.json
   jq --argjson meta "$oma_meta" --argjson rid "$oma_request_id" '.omarchy_install.oma_id = {enabled: true, server_url: $meta.server, device_id: $meta.device, request_id: $rid}' user_configuration.json > /tmp/uc2.tmp && mv /tmp/uc2.tmp user_configuration.json
 }
 
@@ -342,15 +355,6 @@ Keyboard,$keyboard" |
 
     echo
     if gum confirm --negative "No, change it" "Does this look right?"; then
-      if [[ -n "${OMA_ID_MANAGED:-}" && -n "${oma_rescue_password:-}" ]]; then
-        echo
-        say --foreground 3 "Local rescue account: $username"
-        say --foreground 3 "Rescue password (shown once): $oma_rescue_password"
-        echo
-        read -r -s -p "Press Enter to continue" || true
-        echo
-        oma_rescue_password=""
-      fi
       break
     else
       keyboard_form
@@ -508,24 +512,10 @@ _EOF_
 
   local credentials_encryption_line=""
   if [[ $encrypt_installation == true ]]; then
-    if [[ -n "${OMA_ID_MANAGED:-}" ]]; then
-      # §10: the disk-unlock secret is distinct from the rescue login password,
-      # entered locally, never sent to the server.
-      local disk_secret="" disk_confirm
-      while true; do
-        disk_secret=$(gum input --password --placeholder "Needed at every boot; NOT your login password" \
-          --prompt.foreground="#845DF9" --prompt "Disk passphrase> ") || abort
-        disk_confirm=$(gum input --password --placeholder "Confirm the disk passphrase" \
-          --prompt.foreground="#845DF9" --password --prompt "Confirm> ") || abort
-        if [[ -n "$disk_secret" && "$disk_secret" == "$disk_confirm" ]]; then break; fi
-        notice "Passphrases didn't match!" 1
-      done
-      local oma_encryption_escaped
-      oma_encryption_escaped=$(echo -n "$disk_secret" | jq -Rsa)
-      credentials_encryption_line="    \"encryption_password\": $oma_encryption_escaped,"
-    else
-      credentials_encryption_line="    \"encryption_password\": $password_escaped,"
-    fi
+    # One operator-set password for LUKS + local login (§10: entered locally,
+    # never sent to the server). Personal and managed installs share the same
+    # operator-chosen value.
+    credentials_encryption_line="    \"encryption_password\": $password_escaped,"
   fi
 
   cat <<-_EOF_ >user_credentials.json
