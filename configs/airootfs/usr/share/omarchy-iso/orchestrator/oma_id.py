@@ -96,4 +96,52 @@ def stage_oma_id(ctx) -> None:
         error("OMA-ID: hook exited 0 but agent/module missing in the target — continuing UNMANAGED")
         return
 
+    # The provisioned account name (from the §8.4 mapping) for the login
+    # phase (configure_oma_login) to set SDDM's last-user to.
+    try:
+        mapping = json.loads((Path("/opt/oma-id") / "provision-output.json").read_text()) \
+            if (Path("/opt/oma-id") / "provision-output.json").exists() else {}
+    except Exception:
+        mapping = {}
+    login_user = mapping.get("posix_username") or ""
+    if login_user:
+        (target / "etc/oma-id/login-username").write_text(login_user)
+
     info("› OMA-ID: staged (agent, module, config, first-boot unit, PAM wiring)")
+
+
+def configure_oma_login(ctx) -> None:
+    """Runs AFTER quattro's configure_login: managed installs boot to SDDM and
+    log in with the OMA provisioned account (server-attributed password) —
+    no localadmin autologin (which quattro's encrypted non-deferred path
+    writes, landing the operator in a session our lock PAM would trap).
+    """
+    oma = _oma_config(ctx)
+    if not oma:
+        return
+
+    # The provisioned username: read from the staged mapping the provision
+    # phase left (the agent provisions exactly this account).
+    username_file = ctx.target / "etc" / "oma-id" / "login-username"
+    if not username_file.exists():
+        return
+    username = username_file.read_text().strip()
+    if not username:
+        return
+
+    sddm_dir = ctx.target / "etc" / "sddm.conf.d"
+    autologin = sddm_dir / "autologin.conf"
+    if autologin.exists():
+        autologin.unlink()
+        info("› OMA-ID: removed localadmin autologin (managed login = SDDM)")
+
+    state_dir = ctx.target / "var" / "lib" / "sddm"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "state.conf").write_text(
+        f"[Last]\nSession=omarchy.desktop\nUser={username}\n"
+    )
+    import subprocess
+    subprocess.run(["arch-chroot", str(ctx.target), "chown", "sddm:sddm",
+                    "/var/lib/sddm", "/var/lib/sddm/state.conf"],
+                   check=False, capture_output=True)
+    info(f"› OMA-ID: SDDM last-user set to the provisioned account ({username})")

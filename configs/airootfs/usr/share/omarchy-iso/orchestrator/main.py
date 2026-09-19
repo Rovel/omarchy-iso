@@ -28,7 +28,7 @@ def build_phases(ctx: InstallContext):
     create/mount the layout, while protected provides an already-mounted target
     and the partition details Omarchy needs for boot/fstab generation.
     """
-    from .oma_id import stage_oma_id
+    from .oma_id import stage_oma_id, configure_oma_login
     from .phases_impl import (
         prepare_live,
         prepare_install_target,
@@ -59,6 +59,7 @@ def build_phases(ctx: InstallContext):
         ("Finalizing Limine boot",     finalize_limine_boot),
         ("Finalizing user",            run_chroot_finalizer),
         ("Configuring login",          configure_login),
+        ("Configuring OMA-ID login",   configure_oma_login),
         ("Configuring SSH access",     configure_ssh_access),
         ("Configuring Tailscale",      configure_tailscale),
         ("Configuring DNS resolver",   configure_dns_resolver),
