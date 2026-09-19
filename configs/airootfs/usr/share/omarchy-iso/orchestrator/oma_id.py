@@ -120,13 +120,25 @@ def configure_oma_login(ctx) -> None:
     if not oma:
         return
 
-    # The provisioned username: read from the staged mapping the provision
-    # phase left (the agent provisions exactly this account).
-    username_file = ctx.target / "etc" / "oma-id" / "login-username"
-    if not username_file.exists():
-        return
-    username = username_file.read_text().strip()
+    # The provisioned username: the provision phase records it in
+    # provision-output.json (login-username is the plain-text fallback).
+    candidates = [
+        ctx.target / "etc" / "oma-id" / "provision-output.json",
+        ctx.target / "etc" / "oma-id" / "login-username",
+    ]
+    username = ""
+    for uf in candidates:
+        if not uf.exists():
+            continue
+        try:
+            data = json.loads(uf.read_text())
+            username = (data.get("posix_username") or "").strip()
+        except Exception:
+            username = uf.read_text().strip()
+        if username:
+            break
     if not username:
+        info("› OMA-ID: provisioned username unknown — leaving quattro login config untouched")
         return
 
     sddm_dir = ctx.target / "etc" / "sddm.conf.d"
